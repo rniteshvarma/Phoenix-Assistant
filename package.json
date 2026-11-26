@@ -1,0 +1,10 @@
+{
+  "name": "phoenix",
+  "private": true,
+  "workspaces": ["core"],
+  "scripts": {
+    "phoenix": "node core/src/cli/main.ts",
+    "test": "npm test -w core",
+    "typecheck": "npm run typecheck -w core"
+  }
+}
