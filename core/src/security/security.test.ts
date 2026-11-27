@@ -28,3 +28,15 @@ test("seal/open round-trips and detects tampering or a wrong key", () => {
   assert.throws(() => open(key, `v1:${raw.toString("base64")}`));
   assert.throws(() => open(randomBytes(32), sealed));
 });
+
+test("secrets: environment overrides the Keychain, and keys are only ever shown truncated", async () => {
+  const { findSecret, describeKey } = await import("./secrets.ts");
+  assert.deepEqual(findSecret("PHX_TEST_ENV", "phoenix-test-nonexistent-item", { PHX_TEST_ENV: " sk-ant-x " }), {
+    value: "sk-ant-x",
+    source: "environment",
+  });
+  assert.equal(findSecret("PHX_TEST_ENV", "phoenix-test-nonexistent-item", {}), undefined);
+  const shown = describeKey("sk-ant-api03-SECRETPARTSECRETPART");
+  assert.match(shown, /^sk-ant-api… \(33 characters\)$/);
+  assert.ok(!shown.includes("SECRET"));
+});

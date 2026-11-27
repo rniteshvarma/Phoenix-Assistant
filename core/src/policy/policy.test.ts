@@ -7,6 +7,8 @@ import { tempConfig } from "../testing.ts";
 import { BUILTIN_TOOLS } from "../tools/builtin.ts";
 import { ToolRegistry } from "../tools/types.ts";
 import { ensureDirs } from "../config.ts";
+import { DeviceHub } from "../gateway/devices.ts";
+import { MemoryStore } from "../store/memory.ts";
 import { ApprovalAuthority } from "./approvals.ts";
 import { PolicyEngine } from "./engine.ts";
 import { GuardedExecutor } from "./executor.ts";
@@ -103,7 +105,8 @@ test("executor refuses gated tools without a valid token, and runs them with one
     const audit = new AuditLog(db, randomBytes(32));
     const policy = new PolicyEngine(registry);
     const authority = authorityAt({ now: Date.now() });
-    const executor = new GuardedExecutor({ registry, policy, authority, audit, cfg });
+    const services = { memory: new MemoryStore(db, randomBytes(32)), devices: new DeviceHub() };
+    const executor = new GuardedExecutor({ registry, policy, authority, audit, cfg, services });
     const call = { taskId: "task-1", toolUseId: "tu-1", name: "outbox_send", input: email };
 
     const noToken = await executor.execute(call);

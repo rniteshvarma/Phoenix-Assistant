@@ -12,6 +12,20 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at     INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS sessions (
+  id           TEXT PRIMARY KEY,
+  messages_enc TEXT NOT NULL,
+  turns        INTEGER NOT NULL,
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS memories (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  text_enc   TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS audit (
   seq       INTEGER PRIMARY KEY,
   ts        INTEGER NOT NULL,

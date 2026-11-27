@@ -1,7 +1,7 @@
 import type { AuditLog } from "../audit/log.ts";
 import type { PhoenixConfig } from "../config.ts";
 import { sha256Hex } from "../security/canonical.ts";
-import type { ToolRegistry } from "../tools/types.ts";
+import type { ToolRegistry, ToolServices } from "../tools/types.ts";
 import type { ApprovalAuthority, ApprovalToken } from "./approvals.ts";
 import type { PolicyEngine } from "./engine.ts";
 
@@ -24,6 +24,7 @@ export class GuardedExecutor {
   #authority: ApprovalAuthority;
   #audit: AuditLog;
   #cfg: PhoenixConfig;
+  #services: ToolServices;
 
   constructor(deps: {
     registry: ToolRegistry;
@@ -31,12 +32,14 @@ export class GuardedExecutor {
     authority: ApprovalAuthority;
     audit: AuditLog;
     cfg: PhoenixConfig;
+    services: ToolServices;
   }) {
     this.#registry = deps.registry;
     this.#policy = deps.policy;
     this.#authority = deps.authority;
     this.#audit = deps.audit;
     this.#cfg = deps.cfg;
+    this.#services = deps.services;
   }
 
   async execute(call: ToolCall, token?: ApprovalToken): Promise<ExecResult> {
@@ -68,7 +71,11 @@ export class GuardedExecutor {
     }
 
     try {
-      const output = await tool.run(parsed.value, { cfg: this.#cfg, taskId: call.taskId });
+      const output = await tool.run(parsed.value, {
+        ...this.#services,
+        cfg: this.#cfg,
+        taskId: call.taskId,
+      });
       this.#audit.append("tool.executed", call.taskId, {
         tool: call.name,
         toolUseId: call.toolUseId,

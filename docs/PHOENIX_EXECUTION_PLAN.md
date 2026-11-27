@@ -11,7 +11,7 @@
 | Where does Phoenix run? | **Locally on your Mac** (later a Mac mini at home as an always-on "Nest"). The iPhone is a secure remote for it. No Phoenix cloud server in v1. |
 | Brain | Claude API: `claude-opus-5-5` for planning/drafting/computer use, `claude-haiku-5-5` for fast routing, classification and summaries. A small **local model** (Ollama/MLX) handles redaction and anything you mark "never leaves my device". |
 | Hands | (1) Official APIs (Gmail, Calendar, flights), (2) macOS automation (AppleScript/Shortcuts/Accessibility), (3) **computer use** on the Mac screen, (4) iPhone apps via **iPhone Mirroring** driven from the Mac. |
-| Voice | "Hey Phoenix" wake word on Mac (always on). On iPhone: Action Button, "Hey Siri, Phoenix…", Lock Screen widget, or open the app. |
+| Voice | "Phoenix, rise" wake phrase on Mac (always on). On iPhone: Action Button, "Hey Siri, Phoenix…", Lock Screen widget, or open the app. |
 | Human-in-the-loop | Every action is classified into a risk tier. Reading/drafting is automatic; **send / pay / book / post / delete always requires your approval** (Face ID / Touch ID), bound to the exact content you saw. |
 | Privacy | Encrypted local database, secrets in macOS Keychain (never shown to the model), redaction before cloud calls, append-only audit log, one-tap kill switch. |
 | Timeline | ~26 weeks solo (with Claude Code) to a solid private v1; going public is a separate Phase 9. |
@@ -35,7 +35,7 @@ This is the most important section — it decides the architecture.
 
 | Capability | macOS | iPhone (iOS) |
 |---|---|---|
-| Custom always-on wake word ("Hey Phoenix") | ✅ Yes (Porcupine / openWakeWord, low CPU) | ❌ Not reliably. iOS doesn't let third-party apps listen in the background. **Workarounds:** Action Button → Phoenix, "Hey Siri, Phoenix" (App Shortcut phrase), Lock Screen / Control Center button, Back Tap. |
+| Custom always-on wake phrase ("Phoenix, rise") | ✅ Yes (Porcupine / openWakeWord, low CPU) | ❌ Not reliably. iOS doesn't let third-party apps listen in the background. **Workarounds:** Action Button → Phoenix, "Hey Siri, Phoenix" (App Shortcut phrase), Lock Screen / Control Center button, Back Tap. |
 | Replace Siri | ❌ | ❌ (Apple doesn't allow it). We *integrate* with Siri via App Intents instead. |
 | Open other apps and tap/type in them | ✅ Accessibility API + screenshots (computer use) | ❌ iOS sandbox forbids it. **Workarounds:** (a) App Intents/Shortcuts actions that apps expose, (b) URL schemes / deep links, (c) **Mac drives the iPhone through iPhone Mirroring** (macOS 15+ / iOS 18+, Mac and iPhone nearby, iPhone locked). |
 | Read iMessages | ✅ `~/Library/Messages/chat.db` (needs Full Disk Access) | ❌ |
@@ -118,7 +118,7 @@ This is the most important section — it decides the architecture.
 5. The executor **refuses** to run if the payload differs from the approved hash in any way.
 
 ### 4.3 Your email example, end to end
-1. *"Hey Phoenix, read the latest email from Rahul and summarize it."* → T0, automatic. Phoenix speaks a 2–3 line summary and shows it.
+1. *"Phoenix, rise. Read the latest email from Rahul and summarize it."* → T0, automatic. Phoenix speaks a 2–3 line summary and shows it.
 2. *"Draft a reply saying I'll send the proposal by Friday."* → T1. Phoenix retrieves your **Voice Profile** and similar past replies to Rahul, drafts, and shows an Approval Card: To / Subject / Body / "Why I wrote it this way".
 3. You say *"make it a bit warmer"* → new draft.
 4. You tap **Send** → Face ID → the email is sent via the Gmail API → card turns to "Sent ✓ 10:42" with an undo window (Gmail "undo send" style 10s delay).
@@ -157,7 +157,7 @@ Inspired by the Ghost overlay you shared (dark glass panel, waveform, serif for 
 
 ### 6.2 Mac surfaces
 1. **Menu bar flame** — state at a glance; click for recent tasks, pause, kill switch.
-2. **Summon Bar** (the main UI, like the Ghost panel) — floats bottom-center over any app when you say "Hey Phoenix" or press `⌥ Space`:
+2. **Summon Bar** (the main UI, like the Ghost panel) — floats bottom-center over any app when you say "Phoenix, rise" or press `⌥ Space`:
    - Row 1: `🎙 YOU · VOICE` + live waveform → your transcript in serif, streaming.
    - Row 2: `PHOENIX` + mono response streaming with a block cursor.
    - Row 3: **chips** for the plan: `PLAN · 4 STEPS` `READ EMAIL ✓` `DRAFT ⟳` `SEND ⏸ needs you`.
@@ -191,7 +191,7 @@ Short, warm, concrete. Phoenix says what it will do, then does it: *"Found it. R
 | Job/task engine | Durable task table + worker loop (move to Temporal only if needed) | Multi-day tasks, retries, resumable |
 | Mac app | **Swift / SwiftUI**, menu bar app; Accessibility (AXUIElement), ScreenCaptureKit, AppleScript/`NSAppleScript`, Shortcuts, EventKit | Native access to everything the agent needs |
 | iPhone app | **SwiftUI**, App Intents (Siri/Action Button), ActivityKit (Live Activities), UserNotifications (actionable), LocalAuthentication (Face ID), WhisperKit | Native, private |
-| Wake word | **Picovoice Porcupine** custom "Hey Phoenix" (or openWakeWord) | On-device, low power |
+| Wake word | **Picovoice Porcupine** custom "Phoenix, rise" (or openWakeWord) | On-device, low power |
 | Speech-to-text | **WhisperKit** on-device (Apple silicon) | Private, fast |
 | Text-to-speech | Apple on-device voices to start; optional ElevenLabs/OpenAI-voice later for a premium voice | Privacy first |
 | LLM (cloud) | `claude-opus-5-5` (planning, drafting, computer use via `computer_toolset_20260801`), `claude-haiku-5-5` (routing, summaries, quarantined reading) | Quality where it matters, low cost elsewhere |
@@ -266,10 +266,10 @@ Each phase ends with an **exit test** you can demo. Don't start the next phase u
 
 ### Phase 1 — Mac voice & Summon Bar (Weeks 3–5)
 - Mac menu bar app; Summon Bar overlay (Ember design); `⌥ Space` hotkey.
-- Wake word "Hey Phoenix" → WhisperKit STT → Core → streaming reply → TTS. Barge-in (you can interrupt).
+- Wake phrase "Phoenix, rise" → WhisperKit STT → Core → streaming reply → TTS. Barge-in (you can interrupt).
 - Conversation memory + "remember that…" facts.
 - Calendar read (EventKit) + web search as first real skills.
-- **Exit test:** "Hey Phoenix, what's on my calendar tomorrow and will it rain?" → first spoken word in < 2.5 s, correct answer; wake-word false triggers < 1 per hour of normal background audio.
+- **Exit test:** "Phoenix, rise. What's on my calendar tomorrow and will it rain?" → first spoken word in < 2.5 s, correct answer; wake-word false triggers < 1 per hour of normal background audio.
 
 ### Phase 2 — Email + HITL + Voice Profile (Weeks 6–8)
 - Gmail OAuth (keep the Google Cloud app in *Testing* with yourself as test user for personal use — note refresh tokens expire after 7 days in Testing mode; use an *Internal* app if you're on Google Workspace, or IMAP + app password as a fallback).

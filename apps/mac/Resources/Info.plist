@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key><string>dev.phoenix.mac</string>
+    <key>CFBundleName</key><string>Phoenix</string>
+    <key>CFBundleDisplayName</key><string>Phoenix</string>
+    <key>CFBundleExecutable</key><string>Phoenix</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>0.1.0</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <key>LSUIElement</key><true/>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>NSMicrophoneUsageDescription</key><string>Phoenix listens for "Phoenix, rise" and your requests. Speech is recognised on this Mac.</string>
+    <key>NSSpeechRecognitionUsageDescription</key><string>Phoenix turns your speech into text on this Mac so it can understand your requests.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key><string>Phoenix reads your calendar when you ask about your schedule. It never changes events without your approval.</string>
+    <key>NSCalendarsUsageDescription</key><string>Phoenix reads your calendar when you ask about your schedule.</string>
+</dict>
+</plist>

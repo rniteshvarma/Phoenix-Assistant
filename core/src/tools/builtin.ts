@@ -2,6 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { Tier } from "../policy/tiers.ts";
+import { calendarEvents } from "./calendar.ts";
+import { memoryForget, memoryRemember } from "./memory.ts";
 import { defineTool, type Tool } from "./types.ts";
 
 /** Resolve `name` inside `dir`, refusing anything that escapes it (`..`, absolute paths). */
@@ -103,4 +105,12 @@ export const outboxSend = defineTool({
   },
 });
 
-export const BUILTIN_TOOLS: Tool[] = [notesSave, notesList, notesRead, outboxSend];
+export const BUILTIN_TOOLS: Tool[] = [
+  notesSave,
+  notesList,
+  notesRead,
+  outboxSend,
+  memoryRemember,
+  memoryForget,
+  calendarEvents,
+];

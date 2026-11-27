@@ -1,4 +1,4 @@
-import type Anthropic from "@anthropic-ai/sdk";
+import Anthropic from "@anthropic-ai/sdk";
 import type { AuditLog } from "../audit/log.ts";
 import type { ActionProposal, ApprovalAuthority } from "../policy/approvals.ts";
 import type { PolicyEngine } from "../policy/engine.ts";
@@ -20,6 +20,7 @@ export interface Approver {
 
 export type AgentEvent =
   | { type: "task.started"; taskId: string }
+  | { type: "assistant.delta"; text: string }
   | { type: "assistant.text"; text: string }
   | { type: "tool.running"; tool: string; tier: Tier; summary: string }
   | { type: "tool.result"; tool: string; ok: boolean; text: string }
@@ -43,6 +44,17 @@ export interface TaskOutcome {
   taskId: string;
   status: "completed" | "failed" | "cancelled";
   text: string;
+  /** Full conversation after this task (prior history + this exchange), always valid to resend. */
+  messages: Anthropic.Beta.BetaMessageParam[];
+}
+
+export interface RunOptions {
+  onEvent?: (e: AgentEvent) => void;
+  signal?: AbortSignal;
+  /** Earlier turns of the same conversation. Never modified; only appended to. */
+  history?: Anthropic.Beta.BetaMessageParam[];
+  /** Per-turn <context> block placed before the request in the user's message. */
+  context?: string;
 }
 
 type ToolUse = Anthropic.Beta.BetaToolUseBlockParam;
@@ -50,29 +62,35 @@ type ToolUse = Anthropic.Beta.BetaToolUseBlockParam;
 export async function runTask(
   deps: AgentDeps,
   request: string,
-  opts: { onEvent?: (e: AgentEvent) => void; signal?: AbortSignal } = {},
+  opts: RunOptions = {},
 ): Promise<TaskOutcome> {
   const emit = opts.onEvent ?? (() => {});
   const taskId = deps.tasks.create(request);
   deps.audit.append("task.received", taskId, { request, model: deps.model.name });
   emit({ type: "task.started", taskId });
 
+  const messages: Anthropic.Beta.BetaMessageParam[] = [
+    ...(opts.history ?? []),
+    { role: "user", content: opts.context ? `${opts.context}\n\n${request}` : request },
+  ];
+
   const finish = (status: TaskOutcome["status"], text: string): TaskOutcome => {
+    closeOpenToolCalls(messages);
     deps.tasks.finish(taskId, status, text);
     deps.audit.append(`task.${status}`, taskId, { text });
     emit({ type: "task.finished", status, text });
-    return { taskId, status, text };
+    return { taskId, status, text, messages };
   };
 
-  const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: request }];
   const tools = deps.registry.apiTools();
+  const onText = (delta: string) => emit({ type: "assistant.delta", text: delta });
   let lastText = "";
 
   try {
     for (let step = 0; step < deps.maxSteps; step += 1) {
       if (opts.signal?.aborted) return finish("cancelled", "Stopped by the user.");
 
-      const turn = await deps.model.next({ system: SYSTEM_PROMPT, messages, tools });
+      const turn = await deps.model.next({ system: SYSTEM_PROMPT, messages, tools, onText });
       const texts = turn.content.filter((b) => b.type === "text").map((b) => b.text);
       const toolUses = turn.content.filter((b): b is ToolUse => b.type === "tool_use");
       deps.audit.append("model.turn", taskId, {
@@ -80,6 +98,9 @@ export async function runTask(
         stopReason: turn.stopReason,
         text: texts.join("\n"),
         toolCalls: toolUses.map((t) => t.name),
+        serverTools: turn.content
+          .filter((b) => b.type === "server_tool_use")
+          .map((b) => (b as { name: string }).name),
       });
 
       if (turn.refusal) return finish("failed", turn.refusal);
@@ -105,9 +126,40 @@ export async function runTask(
     return finish("failed", `Stopped after ${deps.maxSteps} steps (safety limit).`);
   } catch (err) {
     if (opts.signal?.aborted) return finish("cancelled", "Stopped by the user.");
-    const message = err instanceof Error ? err.message : String(err);
-    return finish("failed", `Error: ${message}`);
+    return finish("failed", explainFailure(err));
   }
+}
+
+/** A failure message the user can act on (shown in the terminal and the Summon Bar). */
+function explainFailure(err: unknown): string {
+  if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
+    return "Anthropic rejected the API key (it may have expired or been revoked). Replace it with: npm run phoenix -- key set, then restart Phoenix.";
+  }
+  if (err instanceof Anthropic.RateLimitError) return "Claude's rate limit was hit. Try again in a minute.";
+  if (err instanceof Anthropic.APIConnectionError) return "Couldn't reach Claude. Check your internet connection.";
+  if (err instanceof Anthropic.APIError) return `Claude API error ${err.status}: ${err.message}`;
+  return `Error: ${err instanceof Error ? err.message : String(err)}`;
+}
+
+/**
+ * If the conversation ends on an assistant turn with tool calls that never got results
+ * (task stopped mid-way), append "not executed" results so the history stays valid
+ * for the next request. This only ever appends.
+ */
+function closeOpenToolCalls(messages: Anthropic.Beta.BetaMessageParam[]): void {
+  const last = messages.at(-1);
+  if (!last || last.role !== "assistant" || typeof last.content === "string" || !last.content) return;
+  const open = last.content.filter((b): b is ToolUse => b.type === "tool_use");
+  if (open.length === 0) return;
+  messages.push({
+    role: "user",
+    content: open.map((t) => ({
+      type: "tool_result" as const,
+      tool_use_id: t.id,
+      content: "Not executed: the task was stopped.",
+      is_error: true,
+    })),
+  });
 }
 
 async function handleToolUse(

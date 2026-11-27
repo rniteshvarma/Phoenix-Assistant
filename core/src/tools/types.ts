@@ -1,9 +1,17 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { PhoenixConfig } from "../config.ts";
+import type { DeviceHub } from "../gateway/devices.ts";
 import type { Tier } from "../policy/tiers.ts";
+import type { MemoryStore } from "../store/memory.ts";
 
-export interface ToolContext {
+/** Shared services tools may use. */
+export interface ToolServices {
+  memory: MemoryStore;
+  devices: DeviceHub;
+}
+
+export interface ToolContext extends ToolServices {
   cfg: PhoenixConfig;
   taskId: string;
 }

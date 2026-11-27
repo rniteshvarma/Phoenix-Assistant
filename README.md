@@ -18,6 +18,52 @@ Full plan: [docs/PHOENIX_EXECUTION_PLAN.md](docs/PHOENIX_EXECUTION_PLAN.md)
 | Tools: `notes_save` (T1), `notes_list`/`notes_read` (T0), `outbox_send` (T2, simulated) | `core/src/tools/builtin.ts` |
 | CLI with terminal approval cards | `core/src/cli/` |
 
+## Status: Phase 1 — Mac voice, Summon Bar & memory (in progress)
+
+| Piece | Where |
+|---|---|
+| Streaming replies (first sentence spoken before the answer is finished) | `core/src/agent/model.ts` |
+| Web search (weather, news, hours) via Claude's server-side search | `core/src/agent/model.ts` |
+| Conversations that continue for 30 min, append-only history | `core/src/store/sessions.ts` |
+| Memory ("remember…"), refuses passwords/cards/Aadhaar/PAN/OTPs | `core/src/store/memory.ts`, `core/src/tools/memory.ts` |
+| Calendar (read-only, runs in the Mac app via EventKit) | `core/src/tools/calendar.ts`, `apps/mac/…/Native.swift` |
+| Local gateway: token auth, loopback only, browsers refused | `core/src/gateway/` |
+| Mac app: menu bar flame, ⌥Space, Summon Bar, Touch ID approvals | `apps/mac/` |
+| "Phoenix, rise" wake phrase + on-device speech recognition + spoken replies | `apps/mac/Sources/Phoenix/VoiceListener.swift`, `Speaker.swift` |
+
+### API keys (saved once, in your Keychain)
+
+```bash
+npm run phoenix -- key set        # save or replace your Anthropic key (typing is hidden)
+npm run phoenix -- key            # which key is in use, and does Anthropic still accept it?
+npm run phoenix -- key remove     # delete it
+```
+
+Phoenix reads the key from the macOS Keychain itself, so every new terminal just works. When a key expires or is revoked, Phoenix says so and `key set` replaces it. An `ANTHROPIC_API_KEY` set in a terminal still takes priority for that terminal.
+
+### Run it every day (starts automatically)
+
+```bash
+npm run phoenix -- key set          # once: save your Anthropic key in the Keychain
+apps/mac/build.sh                    # once (and after app changes): build the Mac app
+npm run phoenix -- autostart on      # start the core + open the app at every login
+npm run phoenix -- autostart         # status: running? key saved? recent log lines
+```
+
+The core runs in the background (log: `~/Library/Logs/Phoenix/core.log`) and restarts if it stops.
+`autostart restart` restarts it (e.g. after `key set`); `autostart off` turns it all off.
+If the core is ever offline, the menu bar flame offers **Start Phoenix core**.
+
+### Talking to Phoenix
+
+- Say **"Phoenix, rise"**, then your request — or press **⌥Space**, or click the keyboard icon to type.
+- While Phoenix is speaking, say **"Phoenix, stop"** (or "stop, Phoenix", "Phoenix, quiet") to silence it and cancel what it's doing. You can also press **Esc**, **⌥Space** or the **Stop** button.
+- Speech is recognised on the Mac; if on-device dictation isn't installed, turn on Dictation in System Settings › Keyboard.
+
+Approvals in the app require Touch ID (or your Mac password). Each rebuild of the app is a new ad-hoc signature, so macOS may ask for permissions again.
+
+Terminal conversation with memory: `npm run phoenix -- chat`. See and delete what Phoenix remembers: `npm run phoenix -- memory`.
+
 ## Run it
 
 Requires Node.js 24+ (uses built-in TypeScript type stripping and `node:sqlite`).

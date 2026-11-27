@@ -1,47 +1,89 @@
+import { renderContext } from "./agent/context.ts";
 import { runTask, type AgentEvent, type Approver, type TaskOutcome } from "./agent/loop.ts";
 import type { ModelClient } from "./agent/model.ts";
 import { AuditLog } from "./audit/log.ts";
 import { ensureDirs, type PhoenixConfig } from "./config.ts";
+import { DeviceHub } from "./gateway/devices.ts";
 import { ApprovalAuthority } from "./policy/approvals.ts";
 import { PolicyEngine } from "./policy/engine.ts";
 import { GuardedExecutor } from "./policy/executor.ts";
 import { loadKeys } from "./security/keys.ts";
 import { openDatabase } from "./store/db.ts";
+import { MemoryStore } from "./store/memory.ts";
+import { SessionStore } from "./store/sessions.ts";
 import { TaskStore } from "./store/tasks.ts";
 import { BUILTIN_TOOLS } from "./tools/builtin.ts";
 import { ToolRegistry, type Tool } from "./tools/types.ts";
 
-/** Composition root: wires storage, security, policy and the agent together. */
+export interface AskOptions {
+  model: ModelClient;
+  approver: Approver;
+  /** Continue this conversation if it's still fresh; omit to start a new one. */
+  sessionId?: string;
+  channel?: "voice" | "text";
+  onEvent?: (e: AgentEvent) => void;
+  signal?: AbortSignal;
+  /** Override the clock (tests). */
+  now?: Date;
+}
+
+export interface AskResult extends TaskOutcome {
+  sessionId: string;
+}
+
+/** Composition root: wires storage, security, policy, memory, devices and the agent together. */
 export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {}) {
   ensureDirs(cfg);
   const keys = loadKeys(cfg);
   const db = openDatabase(cfg.dbPath);
   const audit = new AuditLog(db, keys.dataKey);
   const tasks = new TaskStore(db, keys.dataKey);
+  const sessions = new SessionStore(db, keys.dataKey);
+  const memory = new MemoryStore(db, keys.dataKey);
+  const devices = new DeviceHub();
   const registry = new ToolRegistry(opts.tools ?? BUILTIN_TOOLS);
   const policy = new PolicyEngine(registry);
   const authority = new ApprovalAuthority(keys.hmacKey, { ttlMs: cfg.approvalTtlMs });
-  const executor = new GuardedExecutor({ registry, policy, authority, audit, cfg });
+  const executor = new GuardedExecutor({
+    registry,
+    policy,
+    authority,
+    audit,
+    cfg,
+    services: { memory, devices },
+  });
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   return {
     cfg,
     audit,
     tasks,
+    sessions,
+    memory,
+    devices,
     registry,
     policy,
     authority,
     executor,
-    run(
-      request: string,
-      deps: { model: ModelClient; approver: Approver },
-      runOpts: { onEvent?: (e: AgentEvent) => void; signal?: AbortSignal } = {},
-    ): Promise<TaskOutcome> {
-      return runTask(
-        { ...deps, registry, policy, authority, executor, audit, tasks, maxSteps: cfg.maxSteps },
+
+    /** Handle one user request, continuing a conversation when `sessionId` is given. */
+    async ask(request: string, o: AskOptions): Promise<AskResult> {
+      const session = sessions.resumeOrCreate(o.sessionId);
+      const context = renderContext({
+        now: o.now ?? new Date(),
+        timeZone,
+        memories: memory.list(),
+        channel: o.channel ?? "text",
+      });
+      const outcome = await runTask(
+        { model: o.model, approver: o.approver, registry, policy, authority, executor, audit, tasks, maxSteps: cfg.maxSteps },
         request,
-        runOpts,
+        { onEvent: o.onEvent, signal: o.signal, history: session.messages, context },
       );
+      sessions.save(session.id, outcome.messages, session.turns + 1);
+      return { ...outcome, sessionId: session.id };
     },
+
     close() {
       db.close();
     },
