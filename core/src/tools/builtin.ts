@@ -3,6 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 import { Tier } from "../policy/tiers.ts";
 import { calendarEvents } from "./calendar.ts";
+import { documentRead, documentsList } from "./documents.ts";
 import { memoryForget, memoryRemember } from "./memory.ts";
 import { defineTool, type Tool } from "./types.ts";
 
@@ -114,4 +115,6 @@ export const BUILTIN_TOOLS: Tool[] = [
   memoryRemember,
   memoryForget,
   calendarEvents,
+  documentsList,
+  documentRead,
 ];

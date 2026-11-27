@@ -52,7 +52,7 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
     authority,
     audit,
     cfg,
-    services: { memory, devices },
+    services: { memory, devices, vault },
     vault,
   });
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;

@@ -10,6 +10,12 @@ final class PhoenixController {
     private let listener = VoiceListener()
     private let calendar = CalendarBridge()
     private let summonFX = SummonOverlay()
+    let stats = PhoenixStats()
+    /// When you stopped talking, for the request whose first spoken word we're waiting on.
+    private var measureFrom: Date?
+    /// The panel was opened by "Phoenix, rise" (an empty request after it counts as a false wake-up).
+    private var wokeByPhrase = false
+    private var listeningClock: Timer?
     private(set) var panel: SummonPanel!
 
     private var requestId: String?
@@ -29,6 +35,14 @@ final class PhoenixController {
         }
         core.start()
 
+        // Count time spent listening for "Phoenix, rise" (for false wake-ups per hour).
+        listeningClock = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.state.wakeEnabled, self.state.voiceReady else { return }
+                self.stats.addListening(30)
+            }
+        }
+
         speaker.onStart = { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
@@ -39,6 +53,9 @@ final class PhoenixController {
         }
         speaker.onIdle = { [weak self] in
             Task { @MainActor in self?.speakingFinished() }
+        }
+        speaker.onAudioStart = { [weak self] in
+            Task { @MainActor in self?.firstAudio() }
         }
         speaker.onSpeakingChange = { [weak self] speaking in
             Task { @MainActor in self?.state.speaking = speaking }
@@ -119,6 +136,14 @@ final class PhoenixController {
         state.channel = channel
         state.typing = false
         requestChannel = channel
+        wokeByPhrase = false
+        if channel == "voice" {
+            // Count from when you stopped talking (if recent), else from now.
+            let spoke = listener.lastSpeechAt
+            measureFrom = Date().timeIntervalSince(spoke) < 10 ? spoke : Date()
+        } else {
+            measureFrom = nil
+        }
         show()
         guard state.connected else {
             state.phase = .offline
@@ -362,6 +387,8 @@ final class PhoenixController {
     private func heardWake() {
         speaker.stop()
         if state.busy { return }
+        stats.recordWake()
+        wokeByPhrase = true
         resetForNewRequest()
         state.channel = "voice"
         state.phase = .listening
@@ -398,10 +425,24 @@ final class PhoenixController {
     }
 
     private func listenTimedOut() {
+        if wokeByPhrase {
+            stats.recordFalseWake()   // woke up, but no request followed
+            wokeByPhrase = false
+        }
         if state.phase == .listening {
             state.phase = .idle
             hide()
         }
+    }
+
+    /// First sound of a reply: record how long it took after you stopped talking.
+    private func firstAudio() {
+        guard let start = measureFrom else { return }
+        measureFrom = nil
+        let seconds = Date().timeIntervalSince(start)
+        stats.recordLatency(seconds)
+        state.latencyText = String(format: "%.1f s", seconds)
+        state.latencyGood = seconds < PhoenixStats.latencyTarget
     }
 
     private func speakingFinished() {
@@ -415,6 +456,7 @@ final class PhoenixController {
 
     private func resetForNewRequest() {
         hideWork?.cancel()
+        state.latencyText = ""
         state.userText = ""
         state.replyText = ""
         state.steps = []

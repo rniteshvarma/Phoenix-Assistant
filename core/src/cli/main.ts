@@ -14,6 +14,10 @@ import { speechFromEnvironment } from "../voice/tts.ts";
 import { LineQueue, TerminalApprover } from "./approver.ts";
 import { SECRETS, describeKey, findSecret, removeSecret, storeSecretInteractively, type SecretName } from "../security/secrets.ts";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { KIND_LABEL } from "../privacy/detect.ts";
+import { scanDocument } from "../privacy/documents.ts";
 import {
   APP_LABEL, APP_PATH, CORE_LABEL, CORE_LOG, agentStatus, appAgent, coreAgent, coreResponds, installAgent,
   removeAgent, restartCore, tailLog,
@@ -31,6 +35,7 @@ ${c.ember("Phoenix")} — CLI
   phoenix autostart off          Stop starting automatically
   phoenix autostart [status]     Is the core running? Recent log lines
   phoenix autostart restart      Restart the background core (e.g. after replacing your key)
+  phoenix scan <file>            Check a document/image on this Mac: is it confidential, what may be shared
   phoenix memory                 Show what Phoenix remembers about you
   phoenix memory forget <n>      Delete remembered item #n
   phoenix audit [--limit N]      Show recent audit log entries (decrypted)
@@ -72,6 +77,8 @@ async function main(argv: string[]): Promise<number> {
         return await keyCommand(rest);
       case "autostart":
         return await autostartCommand(rest);
+      case "scan":
+        return await scanCommand(phoenix, rest);
       default: {
         const request = args.join(" ").trim();
         if (!request) {
@@ -177,6 +184,38 @@ async function keyCommand(args: string[]): Promise<number> {
 
   process.stderr.write("  Usage: phoenix key [status|set|remove] [anthropic|elevenlabs]\n");
   return 2;
+}
+
+/** `phoenix scan <file>` — show how Phoenix would treat a document, all on this Mac. */
+async function scanCommand(phoenix: Phoenix, args: string[]): Promise<number> {
+  const file = args.join(" ").trim();
+  if (!file) {
+    process.stderr.write("  Usage: phoenix scan <file>\n");
+    return 2;
+  }
+  try {
+    const scan = await scanDocument(path.resolve(file.replace(/^~(?=\/)/, os.homedir())), phoenix.vault);
+    const kinds = scan.kinds.map((k) => KIND_LABEL[k]).join(", ") || "none";
+    process.stdout.write(
+      [
+        "",
+        `  ${c.ember(scan.file)} ${c.dim(`· ${scan.pages} page(s) · text read ${scan.method === "ocr" ? "with on-device OCR" : scan.method === "text" ? "from the file" : "both ways"}`)}`,
+        scan.confidential
+          ? `  ${c.red("🔒 CONFIDENTIAL")} ${scan.docType ?? "(contains protected details)"} — stays on this Mac`
+          : `  ${c.green("✓")} Not confidential — shared with Claude only after the Privacy Shield`,
+        `  ${c.dim("Protected details found:")} ${kinds}`,
+        "",
+        `  ${c.dim("What Phoenix would pass on:")}`,
+        ...scan.shareable.slice(0, 900).split("\n").map((l) => `  ${c.dim("│")} ${l}`),
+        scan.shareable.length > 900 ? `  ${c.dim("│ …")}` : "",
+        "",
+      ].join("\n") + "\n",
+    );
+    return 0;
+  } catch (err) {
+    process.stderr.write(`  ${c.red("✗")} ${err instanceof Error ? err.message : String(err)}\n`);
+    return 1;
+  }
 }
 
 /** `phoenix autostart …` — run the core in the background from login, via LaunchAgents. */

@@ -5,6 +5,8 @@ let package = Package(
     name: "PhoenixMac",
     platforms: [.macOS(.v14)],
     targets: [
-        .executableTarget(name: "Phoenix", path: "Sources/Phoenix")
+        .executableTarget(name: "Phoenix", path: "Sources/Phoenix"),
+        // On-device text recognition for images and PDFs (Vision + PDFKit), used by the core.
+        .executableTarget(name: "phoenix-ocr", path: "Sources/PhoenixOCR"),
     ]
 )

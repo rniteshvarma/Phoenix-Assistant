@@ -42,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func stop() { controller.stop() }
     @objc private func newConversation() { controller.newConversation() }
     @objc private func quit() { NSApp.terminate(nil) }
+    @objc private func resetStats() { controller.stats.reset() }
 
     /// Start (or restart) the background core installed by `phoenix autostart on`.
     @objc private func startCore() {
@@ -97,6 +98,19 @@ extension AppDelegate: NSMenuDelegate {
         let stopItem = NSMenuItem(title: "Stop Phoenix", action: #selector(stop), keyEquivalent: "")
         stopItem.target = self
         menu.addItem(stopItem)
+
+        menu.addItem(.separator())
+        let testHeader = NSMenuItem(title: "Phase 1 exit test", action: nil, keyEquivalent: "")
+        testHeader.isEnabled = false
+        menu.addItem(testHeader)
+        for line in [controller.stats.latencySummary, controller.stats.wakeSummary] {
+            let item = NSMenuItem(title: line, action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            menu.addItem(item)
+        }
+        let resetStats = NSMenuItem(title: "Reset measurements", action: #selector(resetStats), keyEquivalent: "")
+        resetStats.target = self
+        menu.addItem(resetStats)
 
         if !state.statusLine.isEmpty {
             menu.addItem(.separator())

@@ -18,6 +18,8 @@ final class VoiceListener {
     var onInterrupt: ((String) -> Void)?
 
     private(set) var mode: Mode = .off
+    /// When words were last heard in a request (for measuring Phoenix's response time).
+    private(set) var lastSpeechAt = Date.distantPast
     private(set) var onDevice = false
 
     private var recognizer: SFSpeechRecognizer?
@@ -184,6 +186,7 @@ final class VoiceListener {
             onWake?()
             let command = clean(String(transcript[range.upperBound...]))
             latestCommand = command
+            lastSpeechAt = Date()
             onPartial?(command)
             armSilence(seconds: command.isEmpty ? 6 : 1.4)
         case .command:
@@ -191,7 +194,9 @@ final class VoiceListener {
             if !pushToTalk, let range = transcript.range(of: Self.wakePattern, options: [.regularExpression, .caseInsensitive]) {
                 command = String(transcript[range.upperBound...])
             }
-            latestCommand = clean(command)
+            let cleaned = clean(command)
+            if cleaned != latestCommand { lastSpeechAt = Date() }
+            latestCommand = cleaned
             onPartial?(latestCommand)
             armSilence(seconds: 1.4)
         case .interrupt:

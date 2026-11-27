@@ -56,6 +56,9 @@ final class AppState: ObservableObject {
     @Published var voiceReady = false
     /// Phoenix is talking right now (shows the Stop button).
     @Published var speaking = false
+    /// Time from the end of your request to Phoenix's first spoken word, e.g. "1.9 s".
+    @Published var latencyText = ""
+    @Published var latencyGood = true
     /// When Phoenix was last summoned; drives the "rise" animation.
     @Published var riseStartedAt: Date = .distantPast
     /// Centre of the listening view's AI core, measured in the panel (top-left origin).

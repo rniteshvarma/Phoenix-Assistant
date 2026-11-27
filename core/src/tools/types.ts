@@ -4,11 +4,13 @@ import type { PhoenixConfig } from "../config.ts";
 import type { DeviceHub } from "../gateway/devices.ts";
 import type { Tier } from "../policy/tiers.ts";
 import type { MemoryStore } from "../store/memory.ts";
+import type { PrivacyVault } from "../privacy/vault.ts";
 
 /** Shared services tools may use. */
 export interface ToolServices {
   memory: MemoryStore;
   devices: DeviceHub;
+  vault: PrivacyVault;
 }
 
 export interface ToolContext extends ToolServices {

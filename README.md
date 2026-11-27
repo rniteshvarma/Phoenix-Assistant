@@ -43,13 +43,13 @@ Phoenix reads the key from the macOS Keychain itself, so every new terminal just
 
 ### Privacy Shield
 
-Sensitive data never leaves your Mac. Before anything is sent to Claude (or a cloud voice), Phoenix scans it **on the Mac** and swaps IDs (Aadhaar, PAN, passport, driving licence), bank/card/UPI details, email addresses, phone numbers, passwords, PINs, OTPs and keys for placeholders like `[[PAN_1]]`; the real values stay in an encrypted vault on the Mac. You still see real values on screen. Any action that would send protected data off the Mac asks you **twice** ("Are you sure?"), with Touch ID. Code: `core/src/privacy/`.
+Sensitive data never leaves your Mac. Before anything is sent to Claude (or a cloud voice), Phoenix scans it **on the Mac** and swaps IDs (Aadhaar, PAN, passport, driving licence), bank/card/UPI details, email addresses, phone numbers, passwords, PINs, OTPs and keys for placeholders like `[[PAN_1]]`; the real values stay in an encrypted vault on the Mac. You still see real values on screen. Any action that would send protected data off the Mac asks you **twice** ("Are you sure?"), with Touch ID. Images and PDFs are read on the Mac with Apple's on-device text recognition; ID cards, passports and bank/card statements are treated as **confidential** — Phoenix only learns what kind of document it is. Check any file with `npm run phoenix -- scan <file>`. Code: `core/src/privacy/`.
 
 ### Run it every day (starts automatically)
 
 ```bash
 npm run phoenix -- key set          # once: save your Anthropic key in the Keychain
-apps/mac/build.sh                    # once (and after app changes): build the Mac app
+apps/mac/build.sh                    # once (and after app changes): build the Mac app + on-device text reader
 npm run phoenix -- autostart on      # start the core + open the app at every login
 npm run phoenix -- autostart         # status: running? key saved? recent log lines
 ```

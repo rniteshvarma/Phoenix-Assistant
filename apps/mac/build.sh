@@ -9,4 +9,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/Phoenix "$APP/Contents/MacOS/Phoenix"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 codesign --force --sign - --identifier dev.phoenix.mac "$APP"
+# On-device text recognition helper used by the core (images and PDFs).
+cp .build/release/phoenix-ocr build/phoenix-ocr
+codesign --force --sign - --identifier dev.phoenix.ocr build/phoenix-ocr
 echo "Built $(pwd)/$APP"

@@ -106,8 +106,8 @@ test("executor refuses gated tools without a valid token, and runs them with one
     const audit = new AuditLog(db, randomBytes(32));
     const policy = new PolicyEngine(registry);
     const authority = authorityAt({ now: Date.now() });
-    const services = { memory: new MemoryStore(db, randomBytes(32)), devices: new DeviceHub() };
     const vault = new PrivacyVault(db, randomBytes(32), randomBytes(32));
+    const services = { memory: new MemoryStore(db, randomBytes(32)), devices: new DeviceHub(), vault };
     const executor = new GuardedExecutor({ registry, policy, authority, audit, cfg, services, vault });
     const call = { taskId: "task-1", toolUseId: "tu-1", name: "outbox_send", input: email };
 

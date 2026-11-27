@@ -13,6 +13,8 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate, AVAudioPlayerDelegat
     var requestAudio: ((_ id: String, _ text: String) -> Void)?
     /// Fires when speaking starts or stops, so the UI can show a Stop button.
     var onSpeakingChange: ((Bool) -> Void)?
+    /// Fires each time audio actually starts playing (used to time the first spoken word).
+    var onAudioStart: (() -> Void)?
 
     private struct Item {
         let id: String
@@ -198,6 +200,7 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate, AVAudioPlayerDelegat
             p.delegate = self
             player = p
             p.play()
+            onAudioStart?()
         } else if head.failed || (head.audio != nil) {
             // Cloud voice failed for this sentence: say it with Apple's voice instead.
             queue.removeFirst()
@@ -212,6 +215,7 @@ final class Speaker: NSObject, AVSpeechSynthesizerDelegate, AVAudioPlayerDelegat
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 1.04
         utterance.postUtteranceDelay = 0.05
         synth.speak(utterance)
+        onAudioStart?()
     }
 
     private func finishedOne() {

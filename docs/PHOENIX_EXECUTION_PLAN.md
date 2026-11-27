@@ -154,7 +154,8 @@ The owner's rule: **sensitive data never leaves the Mac**, and any use of it nee
 - **How:** every text crossing to a cloud service (Claude, a cloud voice, web search) is scanned on the Mac (`core/src/privacy/detect.ts`, with Luhn/Verhoeff checks). Each value is swapped for a placeholder (`[[PAN_1]]`) and kept in an encrypted local vault (`core/src/privacy/vault.ts`). The model only ever sees placeholders.
 - **Real values** are filled back in only on the Mac: on screen, in the local voice, and when a local tool runs (e.g. saving a note).
 - **Leaving the Mac:** a tool marked `leavesDevice` (email, forms, bookings) that would carry a protected value needs an approval **and** a second "Are you sure?" confirmation (Touch ID each time). The executor refuses a token with fewer than two confirmations.
-- **Still to do:** on-device OCR (Apple Vision) so scanned IDs in images/PDFs are recognised; whole-document "confidential" classification for Drive files; optional local model for summarising confidential documents without the cloud.
+- **Documents (done 2026-11-27):** images and PDFs are read on the Mac (`apps/mac/Sources/PhoenixOCR`, Apple Vision OCR + PDFKit). ID cards, passports, bank and card statements are classified **confidential**: Phoenix only learns the document type and placeholders for its protected numbers — never names, addresses or dates. Readable folders: Documents, Desktop, Downloads. Try it: `npm run phoenix -- scan <file>`.
+- **Still to do:** an optional local model for summarising confidential or work documents without the cloud (on hold).
 
 ## 6. UI / UX — "Ember" design language
 

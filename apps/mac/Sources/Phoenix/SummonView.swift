@@ -92,6 +92,12 @@ struct SummonView: View {
                 .foregroundStyle(Ember.dim.opacity(0.6))
                 .help("Drag to move")
             StatusChip(phase: state.phase, speaking: state.speaking)
+            if !state.latencyText.isEmpty {
+                Label(state.latencyText, systemImage: "bolt.fill")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(state.latencyGood ? Ember.green : Ember.warn)
+                    .help("Time from when you stopped talking to Phoenix's first word (target under 2.5 s)")
+            }
             Text(headerLabel)
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .tracking(1.4)
