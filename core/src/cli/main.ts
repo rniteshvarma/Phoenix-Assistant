@@ -53,6 +53,7 @@ ${c.ember("Phoenix")} — CLI
   phoenix memory profile "…"     Add to your profile (who you are; sent with every request)
   phoenix memory person "Name" "…"  Add something about a person (nicknames: "Mom (Amma)")
   phoenix memory add|style "…"   Add a fact, or a note on how you write
+  phoenix memory import <file>   Load many memories from a JSON file
   phoenix memory forget <n>      Delete remembered item #n
   phoenix audit [--limit N]      Show recent audit log entries (decrypted)
   phoenix audit verify           Check the audit log's hash chain
@@ -204,6 +205,32 @@ async function keyCommand(args: string[]): Promise<number> {
 
   process.stderr.write("  Usage: phoenix key [status|set|remove] [anthropic|elevenlabs]\n");
   return 2;
+}
+
+/** Load many memories at once: [{ "kind": "profile", "text": "…" }, { "kind": "project", "subject": "…", "text": "…" }]. */
+export function importMemories(phoenix: Phoenix, data: unknown): { added: number; skipped: string[] } {
+  if (!Array.isArray(data)) throw new Error("the file must be a JSON list of { kind, subject?, text }");
+  const kinds = new Set(["profile", "person", "project", "fact", "style", "local"]);
+  const skipped: string[] = [];
+  let added = 0;
+  for (const [i, raw] of data.entries()) {
+    const item = raw as { kind?: string; subject?: string; text?: string };
+    const label = `item ${i + 1}`;
+    if (!item || typeof item.text !== "string" || !item.text.trim()) { skipped.push(`${label}: no text`); continue; }
+    const kind = item.kind ?? "fact";
+    if (!kinds.has(kind)) { skipped.push(`${label}: unknown kind "${kind}"`); continue; }
+    const reason = sensitiveReason(item.text);
+    if (reason) { skipped.push(`${label}: ${reason}`); continue; }
+    try {
+      const before = phoenix.memory.list().length;
+      phoenix.memory.add(item.text.trim(), { kind: kind as MemoryItem["kind"], subject: item.subject });
+      if (phoenix.memory.list().length > before) added += 1;
+      else skipped.push(`${label}: already remembered`);
+    } catch (err) {
+      skipped.push(`${label}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  return { added, skipped };
 }
 
 /** `phoenix screen [allow|deny] "App"` — the apps screen control may operate. */
@@ -636,8 +663,25 @@ function showMemory(phoenix: Phoenix, args: string[]): number {
     process.stdout.write(`  ${c.green("✓")} Remembered #${item.id} (${kind}${subject ? `: ${subject}` : ""})\n`);
     return 0;
   }
+  if (action === "import") {
+    if (!rest[0]) {
+      process.stderr.write("  Usage: phoenix memory import <file.json>\n");
+      return 2;
+    }
+    try {
+      const report = importMemories(phoenix, JSON.parse(fs.readFileSync(rest[0], "utf8")));
+      process.stdout.write(
+        `  ${c.green("✓")} Imported ${report.added} memories${report.skipped.length ? `, skipped ${report.skipped.length}` : ""}\n` +
+          report.skipped.map((s) => `    ${c.amber("–")} ${s}\n`).join(""),
+      );
+      return 0;
+    } catch (err) {
+      process.stderr.write(`  ${c.red("✗")} ${err instanceof Error ? err.message : String(err)}\n`);
+      return 2;
+    }
+  }
   if (action !== undefined && action !== "all") {
-    process.stderr.write("  Usage: phoenix memory [all|add|profile|person|style|forget]\n");
+    process.stderr.write("  Usage: phoenix memory [all|add|profile|person|style|import|forget]\n");
     return 2;
   }
 
@@ -660,6 +704,11 @@ function showMemory(phoenix: Phoenix, args: string[]): number {
     if (!list.length) continue;
     out(`\n  ${c.bold(title)} ${c.dim(`— ${note}`)}\n`);
     list.forEach((m) => out(line(m)));
+  }
+  const local = lasting.filter((m) => m.kind === "local");
+  if (local.length) {
+    out(`\n  ${c.bold("Kept on this Mac only")} ${c.dim("— never sent to Claude (for the on-device model later)")}\n`);
+    local.forEach((m) => out(`    ${c.amber(`#${m.id}`.padEnd(6))}${m.subject ? `${c.ember(m.subject)}: ` : ""}${m.text}\n`));
   }
   for (const kind of ["person", "project"] as const) {
     const bySubject = new Map<string, MemoryItem[]>();

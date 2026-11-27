@@ -10,11 +10,13 @@ import { open, seal } from "../security/crypto.ts";
  *  fact     — any other lasting preference or detail
  *  style    — how the user writes and speaks (notes, plus samples of approved messages)
  *  episode  — a one-line record of a past request and what came of it (kept rolling)
+ *  local    — kept on this Mac only and never sent to any cloud model (e.g. work-confidential
+ *             customer details); for the on-device model later. Only the user can add these.
  *
  * Only the profile goes with every request; everything else is looked up and only the
  * relevant few items are sent (see memory/recall.ts).
  */
-export const MEMORY_KINDS = ["profile", "person", "project", "fact", "style", "episode"] as const;
+export const MEMORY_KINDS = ["profile", "person", "project", "fact", "style", "episode", "local"] as const;
 export type MemoryKind = (typeof MEMORY_KINDS)[number];
 
 export interface MemoryItem {

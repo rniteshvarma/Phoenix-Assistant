@@ -47,7 +47,8 @@ export const memorySearch = defineTool({
   }),
   describe: (i) => `Search memory for "${i.query}"`,
   async run(i, ctx) {
-    const items = ctx.memory.list(i.kind);
+    // Local-only memories never go to the model.
+    const items = ctx.memory.list(i.kind).filter((m) => m.kind !== "local");
     const found = rank(i.query, items, 12);
     if (found.length === 0) return `Nothing remembered matches "${i.query}".`;
     return found

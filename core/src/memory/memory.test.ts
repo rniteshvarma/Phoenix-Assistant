@@ -163,3 +163,25 @@ test("rejecting a draft with feedback is kept as a writing lesson", async () => 
     done();
   }
 });
+
+test("local-only memories are never recalled or searchable by the model", async () => {
+  const { phoenix, done } = setup();
+  try {
+    phoenix.memory.add("ICOMM needs VAPT before go-live", { kind: "local", subject: "Varsun ERP: ICOMM VAPT" });
+    phoenix.memory.add("Prefers VAPT reports as PDF", { kind: "fact" });
+    const r = recall(phoenix.memory, "what's happening with the ICOMM VAPT");
+    assert.ok(![...r.relevant, ...r.people.flatMap((p) => p.items)].some((m) => m.kind === "local"));
+    let searched = "";
+    await phoenix.ask("search ICOMM", {
+      model: new ScriptedModel([
+        () => callTool("Looking.", "memory_search", { query: "ICOMM VAPT" }),
+        (m) => ((searched = JSON.stringify(m.at(-1))), say("ok")),
+      ]),
+      approver: new FakeApprover([]),
+    });
+    assert.ok(!searched.includes("go-live"), "local memory not returned to the model");
+    assert.match(searched, /PDF/);
+  } finally {
+    done();
+  }
+});

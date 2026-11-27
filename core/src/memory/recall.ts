@@ -89,6 +89,7 @@ export function recall(store: MemoryStore, request: string): Recall {
   const pages = new Map<string, MemoryItem[]>();
   for (const m of all) {
     if ((m.kind === "person" || m.kind === "project") && m.subject && mentions(request, m.subject)) {
+      // (local memories are never picked: they don't leave this Mac)
       pages.set(m.subject, [...(pages.get(m.subject) ?? []), m]);
     }
   }
@@ -96,7 +97,7 @@ export function recall(store: MemoryStore, request: string): Recall {
   const shown = new Set([...profile, ...people.flatMap((p) => p.items)].map((m) => m.id));
 
   // Style notes come only with writing requests, in their own section.
-  const pool = all.filter((m) => !shown.has(m.id) && m.kind !== "profile" && m.kind !== "style");
+  const pool = all.filter((m) => !shown.has(m.id) && m.kind !== "profile" && m.kind !== "style" && m.kind !== "local");
   const relevant = rank(request, pool, 8);
   if (REFERS_BACK.test(request)) {
     for (const e of all.filter((m) => m.kind === "episode").slice(-3)) if (!relevant.includes(e)) relevant.push(e);

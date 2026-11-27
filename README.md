@@ -30,6 +30,7 @@ the prompt); everything else is looked up on the Mac and only the few relevant i
 | Facts | Preferences and details | Only the best few matches for the request |
 | How you write | Style notes, recent messages you approved, your feedback on drafts | Only when Phoenix is writing for you |
 | Recent requests | One line per request and how it ended (last 300) | When you refer back ("yesterday", "follow up") |
+| Kept on Mac only | Work-confidential details (e.g. Varsun customer specifics) | Never: reserved for the on-device model |
 
 Phoenix learns as you talk (and says "I'll remember that"); it never stores passwords, PINs, OTPs, card or ID numbers.
 
@@ -38,6 +39,7 @@ npm run phoenix -- memory                                   # see everything, gr
 npm run phoenix -- memory profile "I'm a product manager at Varsun"
 npm run phoenix -- memory person "Ankit" "Colleague; prefers short WhatsApp messages"
 npm run phoenix -- memory style "I write WhatsApp messages in lowercase, short, no full stops"
+npm run phoenix -- memory import profile.json              # many at once: [{"kind","subject","text"}]
 npm run phoenix -- memory forget 12
 ```
 
