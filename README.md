@@ -18,6 +18,21 @@ Full plan: [docs/PHOENIX_EXECUTION_PLAN.md](docs/PHOENIX_EXECUTION_PLAN.md)
 | Tools: `notes_save` (T1), `notes_list`/`notes_read` (T0), `outbox_send` (T2, simulated) | `core/src/tools/builtin.ts` |
 | CLI with terminal approval cards | `core/src/cli/` |
 
+## Control Center
+
+Menu bar flame › **Control Center…** (⌘,). A native window that talks to the core over the same
+private connection as the Summon Bar (this Mac only, token-protected, browsers refused).
+
+| Tab | What you can do |
+|---|---|
+| General | Rename the assistant and its wake phrase; briefing time, quiet hours, meeting nudges; apps allowed for screen control |
+| Appearance | Themes (Phoenix, Ocean, Aurora, Violet, Rose, Royal Gold, Steel), boot animation on/off |
+| Memory | See, search, add, edit and delete everything it remembers, by kind |
+| Skills | Create and edit routines ("My usual Swiggy order"), switch them on/off. Or say "Phoenix, learn this: …" |
+| Connectors | Switch built-in connectors on/off (off = its tools are never offered or run) |
+| API Keys | Add, replace, test or remove keys (stored in the Keychain; used immediately, no restart) |
+| History | Read, search, copy or delete past conversations |
+
 ## Memory: Phoenix knows you (without re-reading everything)
 
 Everything is encrypted on this Mac. Only the **profile** goes with every request (in the cached part of

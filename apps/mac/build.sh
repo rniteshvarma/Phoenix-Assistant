@@ -8,6 +8,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/Phoenix "$APP/Contents/MacOS/Phoenix"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+cp Resources/AppIcon.icns Resources/PhoenixMark.png "$APP/Contents/Resources/"
 codesign --force --sign - --identifier dev.phoenix.mac "$APP"
 # On-device text recognition helper used by the core (images and PDFs).
 cp .build/release/phoenix-ocr build/phoenix-ocr

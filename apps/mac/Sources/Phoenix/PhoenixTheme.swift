@@ -2,17 +2,18 @@ import SwiftUI
 
 // MARK: - Fire palette
 
+/// The accent palette; follows the theme chosen in Control Center › Appearance.
 enum Fire {
-    static let crimson = Color(red: 0.86, green: 0.13, blue: 0.10)
-    static let ember = Color(red: 1.0, green: 0.42, blue: 0.17)
-    static let flame = Color(red: 1.0, green: 0.62, blue: 0.20)
-    static let gold = Color(red: 1.0, green: 0.82, blue: 0.36)
-    static let core = Color(red: 1.0, green: 0.95, blue: 0.78)
+    static var crimson: Color { Theme.current.deep }
+    static var ember: Color { Theme.current.ember }
+    static var flame: Color { Theme.current.flame }
+    static var gold: Color { Theme.current.gold }
+    static var core: Color { Theme.current.core }
 
-    /// Bottom-to-top: deep red at the tail, gold at the head.
-    static let body = LinearGradient(colors: [crimson, ember, flame, gold], startPoint: .bottom, endPoint: .top)
-    static let wing = LinearGradient(colors: [crimson, ember, gold], startPoint: .bottomTrailing, endPoint: .topLeading)
-    static let ring: [Color] = [crimson, ember, gold, core, gold, ember, crimson]
+    /// Bottom-to-top: deep at the tail, brightest at the head.
+    static var body: LinearGradient { LinearGradient(colors: [crimson, ember, flame, gold], startPoint: .bottom, endPoint: .top) }
+    static var wing: LinearGradient { LinearGradient(colors: [crimson, ember, gold], startPoint: .bottomTrailing, endPoint: .topLeading) }
+    static var ring: [Color] { [crimson, ember, gold, core, gold, ember, crimson] }
 }
 
 /// Smooth 0→1 easing for the rise.

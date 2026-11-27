@@ -23,14 +23,20 @@ export const ALWAYS_BLOCKED = new Set([
  */
 export class PolicyEngine {
   #registry: ToolRegistry;
+  #isOff: (tool: string) => boolean;
 
-  constructor(registry: ToolRegistry) {
+  /** `isOff`: tools whose connector the user switched off in the Control Center. */
+  constructor(registry: ToolRegistry, isOff: (tool: string) => boolean = () => false) {
     this.#registry = registry;
+    this.#isOff = isOff;
   }
 
   decide(toolName: string): Decision {
     if (ALWAYS_BLOCKED.has(toolName)) {
       return { kind: "block", reason: `"${toolName}" can never be run by Phoenix` };
+    }
+    if (this.#isOff(toolName)) {
+      return { kind: "block", reason: `"${toolName}" is switched off in the Control Center` };
     }
     const tool = this.#registry.get(toolName);
     if (!tool) {

@@ -63,10 +63,15 @@ export class MemoryStore {
     return { id: Number(result.lastInsertRowid), kind, subject, text, createdAt };
   }
 
-  /** Replace a memory's text (keeps its kind and subject). */
-  update(id: number, text: string): boolean {
+  /** Replace a memory's text (and, if given, its subject); keeps its kind. */
+  update(id: number, text: string, subject?: string | null): boolean {
     this.#cache = null;
-    return this.#db.prepare("UPDATE memories SET text_enc = ? WHERE id = ?").run(seal(this.#key, text), id).changes > 0;
+    if (subject === undefined) {
+      return this.#db.prepare("UPDATE memories SET text_enc = ? WHERE id = ?").run(seal(this.#key, text), id).changes > 0;
+    }
+    return this.#db
+      .prepare("UPDATE memories SET text_enc = ?, subject_enc = ? WHERE id = ?")
+      .run(seal(this.#key, text), subject ? seal(this.#key, subject) : null, id).changes > 0;
   }
 
   remove(id: number): boolean {

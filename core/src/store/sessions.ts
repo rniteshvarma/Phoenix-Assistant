@@ -49,6 +49,28 @@ export class SessionStore {
     return session;
   }
 
+  /** Past conversations, newest first (for the Control Center's history). */
+  list(limit = 100): Array<{ id: string; turns: number; createdAt: number; updatedAt: number; messages: History }> {
+    const rows = this.#db
+      .prepare("SELECT * FROM sessions WHERE turns > 0 ORDER BY updated_at DESC LIMIT ?")
+      .all(limit) as unknown as Array<{ id: string; messages_enc: string; turns: number; created_at: number; updated_at: number }>;
+    return rows.map((r) => ({
+      id: r.id, turns: r.turns, createdAt: r.created_at, updatedAt: r.updated_at,
+      messages: JSON.parse(open(this.#key, r.messages_enc)) as History,
+    }));
+  }
+
+  get(id: string): { id: string; turns: number; createdAt: number; updatedAt: number; messages: History } | undefined {
+    const r = this.#db.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as
+      | { id: string; messages_enc: string; turns: number; created_at: number; updated_at: number }
+      | undefined;
+    return r && { id: r.id, turns: r.turns, createdAt: r.created_at, updatedAt: r.updated_at, messages: JSON.parse(open(this.#key, r.messages_enc)) };
+  }
+
+  remove(id: string): boolean {
+    return this.#db.prepare("DELETE FROM sessions WHERE id = ?").run(id).changes > 0;
+  }
+
   save(id: string, messages: History, turns: number): void {
     this.#db
       .prepare("UPDATE sessions SET messages_enc = ?, turns = ?, updated_at = ? WHERE id = ?")

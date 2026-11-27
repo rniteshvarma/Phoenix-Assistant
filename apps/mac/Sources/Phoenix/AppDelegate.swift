@@ -10,8 +10,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // `-renderPreview <dir>`: draw the Control Center tabs to PNGs and quit (design check).
+        if let dir = UserDefaults.standard.string(forKey: "renderPreview") {
+            ControlCenterPreview.render(to: dir, state: AppState())
+            return
+        }
         controller = PhoenixController()
         controller.start()
+        // `open Phoenix.app --args -openControlCenter YES` opens the Control Center at launch.
+        if UserDefaults.standard.bool(forKey: "openControlCenter") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.controller.openControlCenter() }
+        }
 
         hotKey = HotKey { [weak self] in
             Task { @MainActor in self?.controller.hotKeyPressed() }
@@ -33,7 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let image = NSImage(systemSymbolName: name, accessibilityDescription: "Phoenix")
         image?.isTemplate = !active
         statusItem.button?.image = image
-        statusItem.button?.contentTintColor = active ? NSColor(red: 1, green: 0.42, blue: 0.17, alpha: 1) : nil
+        statusItem.button?.contentTintColor = active ? Theme.current.nsAccent : nil
     }
 
     @objc private func talk() { controller.hotKeyPressed() }
@@ -41,6 +50,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleWake() { controller.toggleWake() }
     @objc private func stop() { controller.stop() }
     @objc private func newConversation() { controller.newConversation() }
+    @objc private func openControlCenter() { controller.openControlCenter() }
+    @objc private func openHistory() { controller.openControlCenter(.history) }
     @objc private func quit() { NSApp.terminate(nil) }
     @objc private func resetStats() { controller.stats.reset() }
     @objc private func briefNow() { controller.briefNow() }
@@ -68,7 +79,7 @@ extension AppDelegate: NSMenuDelegate {
         menu.removeAllItems()
         let state = controller.state
         let status = NSMenuItem(
-            title: state.connected ? "Phoenix · \(state.phase.label.capitalized)" : "Phoenix core offline",
+            title: state.connected ? "\(Persona.name) · \(state.phase.label.capitalized)" : "\(Persona.name) core offline",
             action: nil, keyEquivalent: ""
         )
         status.isEnabled = false
@@ -80,25 +91,33 @@ extension AppDelegate: NSMenuDelegate {
         }
         menu.addItem(.separator())
 
-        let talkItem = NSMenuItem(title: "Talk to Phoenix   \(hotKey?.label ?? "")", action: #selector(talk), keyEquivalent: "")
+        let talkItem = NSMenuItem(title: "Talk to \(Persona.name)   \(hotKey?.label ?? "")", action: #selector(talk), keyEquivalent: "")
         talkItem.target = self
         menu.addItem(talkItem)
 
-        let typeItem = NSMenuItem(title: "Type to Phoenix…", action: #selector(type), keyEquivalent: "")
+        let typeItem = NSMenuItem(title: "Type to \(Persona.name)…", action: #selector(type), keyEquivalent: "")
         typeItem.target = self
         menu.addItem(typeItem)
 
-        let wake = NSMenuItem(title: "Listen for “Phoenix, rise”", action: #selector(toggleWake), keyEquivalent: "")
+        let wake = NSMenuItem(title: "Listen for “\(Persona.wakePhrase)”", action: #selector(toggleWake), keyEquivalent: "")
         wake.target = self
         wake.state = state.wakeEnabled ? .on : .off
         wake.isEnabled = state.voiceReady
         menu.addItem(wake)
 
+        let center = NSMenuItem(title: "Control Center…", action: #selector(openControlCenter), keyEquivalent: ",")
+        center.target = self
+        menu.addItem(center)
+        let historyItem = NSMenuItem(title: "Conversation history…", action: #selector(openHistory), keyEquivalent: "")
+        historyItem.target = self
+        menu.addItem(historyItem)
+        menu.addItem(.separator())
+
         let fresh = NSMenuItem(title: "New conversation", action: #selector(newConversation), keyEquivalent: "")
         fresh.target = self
         menu.addItem(fresh)
 
-        let stopItem = NSMenuItem(title: "Stop Phoenix", action: #selector(stop), keyEquivalent: "")
+        let stopItem = NSMenuItem(title: "Stop \(Persona.name)", action: #selector(stop), keyEquivalent: "")
         stopItem.target = self
         menu.addItem(stopItem)
 
@@ -134,7 +153,7 @@ extension AppDelegate: NSMenuDelegate {
             menu.addItem(note)
         }
         menu.addItem(.separator())
-        let quitItem = NSMenuItem(title: "Quit Phoenix", action: #selector(quit), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit \(Persona.name)", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
     }

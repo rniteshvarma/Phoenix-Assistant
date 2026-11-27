@@ -6,6 +6,7 @@ import type { Tier } from "../policy/tiers.ts";
 import type { MemoryStore } from "../store/memory.ts";
 import type { PrivacyVault } from "../privacy/vault.ts";
 import type { SettingsStore } from "../proactive/schedule.ts";
+import type { SkillStore } from "../store/skills.ts";
 import type { ScreenModel } from "../screen/session.ts";
 
 /** Shared services tools may use. */
@@ -14,6 +15,7 @@ export interface ToolServices {
   devices: DeviceHub;
   vault: PrivacyVault;
   settings: SettingsStore;
+  skills: SkillStore;
 }
 
 /** Per-run hooks for long tools that need the user part-way through (screen control). */

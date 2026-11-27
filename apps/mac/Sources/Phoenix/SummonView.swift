@@ -4,21 +4,26 @@ import SwiftUI
 enum Ember {
     static let panel = Color(red: 0.078, green: 0.082, blue: 0.102).opacity(0.95)
     static let border = Color(red: 0.165, green: 0.172, blue: 0.2)
-    static let ember = Color(red: 1.0, green: 0.416, blue: 0.169)
-    static let amber = Color(red: 1.0, green: 0.71, blue: 0.278)
+    static var ember: Color { Theme.current.ember }
+    static var amber: Color { Theme.current.amber }
     static let warn = Color(red: 1.0, green: 0.784, blue: 0.341)
     static let green = Color(red: 0.357, green: 0.839, blue: 0.604)
     static let red = Color(red: 1.0, green: 0.302, blue: 0.369)
-    static let text = Color(white: 0.93)
-    static let dim = Color(white: 0.55)
-    static let flame = LinearGradient(colors: [ember, amber], startPoint: .bottom, endPoint: .top)
+    static let text = Color(red: 0.95, green: 0.94, blue: 0.92)
+    static let dim = Color(red: 0.58, green: 0.57, blue: 0.60)
+    static var flame: LinearGradient { LinearGradient(colors: [ember, amber], startPoint: .bottom, endPoint: .top) }
 }
 
 struct SummonView: View {
     @ObservedObject var state: AppState
     let controller: PhoenixController
 
+    /// Rebuilt when the theme or name changes, so every color and label updates.
     var body: some View {
+        content.id("\(state.themeID)-\(state.assistantName)")
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 12) {
             header
             if !state.userText.isEmpty {
@@ -38,7 +43,7 @@ struct SummonView: View {
                             DispatchQueue.main.async { state.coreCenterInPanel = center }
                         }
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("PHOENIX HAS RISEN")
+                        Text(state.assistantName == "Phoenix" ? "PHOENIX HAS RISEN" : "\(state.assistantName.uppercased()) IS LISTENING")
                             .font(.system(size: 11, weight: .semibold, design: .monospaced))
                             .tracking(2.2)
                             .foregroundStyle(Fire.body)
@@ -159,7 +164,7 @@ struct SummonView: View {
 
     private var reply: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("PHOENIX")
+            Text(state.assistantName.uppercased())
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .tracking(1.6)
                 .foregroundStyle(Fire.body)
@@ -378,7 +383,7 @@ struct ApprovalCardView: View {
                 .foregroundStyle(Ember.dim)
             if state.changingApproval {
                 HStack {
-                    TextField("What should Phoenix change?", text: $state.approvalFeedback)
+                    TextField("What should \(state.assistantName) change?", text: $state.approvalFeedback)
                         .textFieldStyle(.roundedBorder)
                         .onSubmit(sendChange)
                     Button("Send", action: sendChange)

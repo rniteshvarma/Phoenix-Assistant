@@ -529,7 +529,7 @@ struct LiveScreenView: View {
                 HStack(spacing: 10) {
                     Circle().fill(Fire.ember).frame(width: 9, height: 9).opacity(pulse)
                         .shadow(color: Fire.ember, radius: 6)
-                    Text("Phoenix is using \(model.app)").font(.system(size: 13, weight: .semibold))
+                    Text("\(Persona.name) is using \(model.app)").font(.system(size: 13, weight: .semibold))
                     Text(model.status).font(.system(size: 12)).foregroundStyle(Fire.gold)
                     Text("· move the mouse or press a key to take over").font(.system(size: 12)).foregroundStyle(.secondary)
                 }

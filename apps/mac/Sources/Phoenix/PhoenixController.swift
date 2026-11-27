@@ -226,6 +226,13 @@ final class PhoenixController {
         if state.wakeEnabled { listener.startWake() } else { listener.stopWake() }
     }
 
+    private lazy var controlCenter = ControlCenterWindow(core: core, state: state)
+
+    /// Phoenix Control Center (menu bar › Control Center…, or ⌘,).
+    func openControlCenter(_ section: ControlCenterModel.Section? = nil) {
+        controlCenter.show(section: section)
+    }
+
     func newConversation() {
         resetForNewRequest()
         state.statusLine = "Next request starts a fresh conversation."
@@ -282,6 +289,10 @@ final class PhoenixController {
         if !up { speaker.connectionLost() }
         if up {
             if state.phase == .offline { state.phase = .idle }
+            // The core needs the name too (so Claude introduces itself by it).
+            if Persona.name != "Phoenix" {
+                Task { _ = try? await core.admin(["op": "settings.set", "name": Persona.name]) }
+            }
             state.statusLine = ""
         } else {
             state.phase = .offline

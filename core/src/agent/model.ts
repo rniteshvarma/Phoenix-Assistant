@@ -7,6 +7,8 @@ export interface ModelRequest {
   system: string;
   messages: Anthropic.Beta.BetaMessageParam[];
   tools: Anthropic.Beta.BetaTool[];
+  /** Server-side web search; on unless false. */
+  webSearch?: boolean;
   /** Who the user is: changes rarely, so it is cached right after the system prompt. */
   profile?: string;
   /** Called with each text fragment as it streams, so the UI and voice can start early. */
@@ -57,7 +59,7 @@ export class ClaudeModel implements ModelClient {
           { type: "text", text: req.system, cache_control: { type: "ephemeral" } },
           ...(req.profile ? [{ type: "text" as const, text: req.profile, cache_control: { type: "ephemeral" as const } }] : []),
         ],
-        tools: [...req.tools.map((t) => ({ ...t, eager_input_streaming: true })), WEB_SEARCH],
+        tools: [...req.tools.map((t) => ({ ...t, eager_input_streaming: true })), ...(req.webSearch === false ? [] : [WEB_SEARCH])],
         messages: req.messages,
       });
       if (req.onText) stream.on("text", (delta) => req.onText!(delta));

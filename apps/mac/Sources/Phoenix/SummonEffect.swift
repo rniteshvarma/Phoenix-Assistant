@@ -13,7 +13,7 @@ final class SummonOverlay {
     private var window: NSWindow?
     private var token = UUID()
 
-    static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || !Theme.bootAnimation }
 
     /// Play around `core` (where the panel's phoenix will appear) framing `panel`, both in
     /// screen coordinates, and call `onArrive` as the panel should open.

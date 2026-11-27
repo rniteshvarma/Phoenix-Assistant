@@ -12,7 +12,9 @@ import { GuardedExecutor } from "./policy/executor.ts";
 import { loadKeys } from "./security/keys.ts";
 import { openDatabase } from "./store/db.ts";
 import { MemoryStore } from "./store/memory.ts";
-import { recall, renderProfile, renderRecall } from "./memory/recall.ts";
+import { matchSkill, recall, renderProfile, renderRecall, renderSkillIndex } from "./memory/recall.ts";
+import { SkillStore } from "./store/skills.ts";
+import { disabledTools } from "./admin/connectors.ts";
 import { SessionStore } from "./store/sessions.ts";
 import { TaskStore } from "./store/tasks.ts";
 import { BUILTIN_TOOLS } from "./tools/builtin.ts";
@@ -49,7 +51,9 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
   const settings = new SettingsStore(db);
   const vault = new PrivacyVault(db, keys.dataKey, keys.privacyKey);
   const registry = new ToolRegistry(opts.tools ?? BUILTIN_TOOLS);
-  const policy = new PolicyEngine(registry);
+  const skills = new SkillStore(db, keys.dataKey);
+  // Connectors switched off in the Control Center: their tools are hidden and blocked.
+  const policy = new PolicyEngine(registry, (tool) => disabledTools(settings).has(tool));
   const authority = new ApprovalAuthority(keys.hmacKey, { ttlMs: cfg.approvalTtlMs });
   const executor = new GuardedExecutor({
     registry,
@@ -57,7 +61,7 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
     authority,
     audit,
     cfg,
-    services: { memory, devices, vault, settings },
+    services: { memory, devices, vault, settings, skills },
     vault,
   });
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -70,6 +74,7 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
     memory,
     devices,
     settings,
+    skills,
     vault,
     registry,
     policy,
@@ -82,19 +87,34 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
       // Privacy Shield: sensitive values become placeholders before anything reaches the model.
       // Memory: the profile (cached) plus only what's relevant to this request, picked on this Mac.
       const recalled = recall(memory, request);
+      // The stable part (cached): the assistant's name, who the user is, and the skill index.
+      const name = settings.get<string>("assistant.name", "Phoenix");
+      const enabledSkills = skills.list().filter((s) => s.enabled);
+      const profile =
+        vault.protect(
+          [
+            name !== "Phoenix" ? `The user has named you "${name}". Introduce and refer to yourself as ${name}.` : "",
+            renderProfile(recalled.profile),
+            renderSkillIndex(enabledSkills),
+          ].filter(Boolean).join("\n\n"),
+        ).text || undefined;
+      const skill = matchSkill(request, enabledSkills);
+      const skillLines = skill
+        ? [`A saved skill that may fit this request — "${skill.name}" (${skill.description}). Follow it if it fits:`, skill.steps]
+        : [];
       const context = renderContext({
         now: o.now ?? new Date(),
         timeZone,
-        recalled: renderRecall(recalled),
+        recalled: [...renderRecall(recalled), ...skillLines],
         channel: o.channel ?? "text",
       });
-      const profile = vault.protect(renderProfile(recalled.profile)).text || undefined;
       const safeRequest = vault.protect(request).text;
       const safeContext = vault.protect(context).text;
       const outcome = await runTask(
         { model: o.model, approver: o.approver, registry, policy, authority, executor, audit, tasks, vault, memory, maxSteps: cfg.maxSteps },
         safeRequest,
-        { onEvent: o.onEvent, signal: o.signal, history: session.messages, context: safeContext, readOnly: o.readOnly, profile },
+        { onEvent: o.onEvent, signal: o.signal, history: session.messages, context: safeContext, readOnly: o.readOnly, profile,
+          webSearch: !disabledTools(settings).has("web_search") },
       );
       if (!o.readOnly && outcome.status !== "cancelled") {
         try {

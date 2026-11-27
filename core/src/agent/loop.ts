@@ -65,6 +65,8 @@ export interface RunOptions {
   readOnly?: boolean;
   /** The user's profile (from memory), sent in the cached part of the prompt. */
   profile?: string;
+  /** Offer server-side web search (default on; the user can switch it off). */
+  webSearch?: boolean;
 }
 
 type ToolUse = Anthropic.Beta.BetaToolUseBlockParam;
@@ -96,7 +98,8 @@ export async function runTask(
     return { taskId, status, text: vault.reveal(text), messages };
   };
 
-  const tools = deps.registry.apiTools();
+  // Tools of connectors the user switched off are not offered at all.
+  const tools = deps.registry.apiTools().filter((t) => deps.policy.decide(t.name).kind !== "block");
   const revealer = new StreamRevealer((t) => vault.reveal(t));
   const onText = (delta: string) => {
     const ready = revealer.push(delta);
@@ -108,7 +111,7 @@ export async function runTask(
     for (let step = 0; step < deps.maxSteps; step += 1) {
       if (opts.signal?.aborted) return finish("cancelled", "Stopped by the user.");
 
-      const turn = await deps.model.next({ system: SYSTEM_PROMPT, profile: opts.profile, messages, tools, onText });
+      const turn = await deps.model.next({ system: SYSTEM_PROMPT, profile: opts.profile, messages, tools, onText, webSearch: opts.webSearch });
       const tail = revealer.flush();
       if (tail) show({ type: "assistant.delta", text: tail });
       const texts = turn.content.filter((b) => b.type === "text").map((b) => b.text);

@@ -115,10 +115,11 @@ async function main(argv: string[]): Promise<number> {
 }
 
 /** Returns a model factory, or prints why Claude can't be used and returns null. */
-function modelFactory(offline: boolean): ((request: string) => ModelClient) | null {
+function modelFactory(offline: boolean, opts: { quiet?: boolean } = {}): ((request: string) => ModelClient) | null {
   if (offline) return (request) => new ScriptedModel(demoScript(request));
   const s = SECRETS.anthropic;
   const key = findSecret(s.env, s.service);
+  if (opts.quiet) return key && !checkApiKey(key.value) ? ((client) => () => new ClaudeModel(client))(new Anthropic({ apiKey: key.value })) : null;
   if (!key) {
     process.stderr.write(
       [
@@ -541,8 +542,14 @@ async function chat(phoenix: Phoenix, offline: boolean): Promise<number> {
 }
 
 async function serve(phoenix: Phoenix, offline: boolean): Promise<number> {
-  const makeModel = modelFactory(offline);
-  if (!makeModel) return 2;
+  // The key can be added or replaced from the Control Center while the core runs.
+  let factory = modelFactory(offline, { quiet: !offline });
+  if (!factory && !offline) process.stdout.write(`  ${c.amber("!")} No Anthropic key yet: add it in Phoenix Control Center › API Keys.\n`);
+  const makeModel = (request: string): ModelClient => {
+    factory ??= modelFactory(offline, { quiet: true });
+    if (!factory) throw new Error("No Anthropic API key saved yet. Add it in Phoenix Control Center › API Keys.");
+    return factory(request);
+  };
   const token = loadOrCreateGatewayToken(phoenix.cfg);
   const port = Number(process.env.PHOENIX_PORT ?? 7788);
   const speech = speechFromEnvironment(process.env, phoenix.cfg.home);
@@ -562,6 +569,12 @@ async function serve(phoenix: Phoenix, offline: boolean): Promise<number> {
     speech,
     proactive,
     modelFactory: makeModel,
+    admin: {
+      keysChanged: () => {
+        factory = modelFactory(offline, { quiet: true });
+        process.stdout.write(`  ${c.dim(new Date().toLocaleTimeString())} API key updated from the Control Center\n`);
+      },
+    },
     log: (line) => process.stdout.write(`  ${c.dim(new Date().toLocaleTimeString())} ${line}\n`),
     });
   } catch (err) {

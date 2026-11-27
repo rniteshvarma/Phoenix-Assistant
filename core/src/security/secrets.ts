@@ -69,3 +69,22 @@ export function removeSecret(name: SecretName): boolean {
 export function describeKey(value: string): string {
   return `${value.slice(0, 10)}… (${value.length} characters)`;
 }
+
+/**
+ * Save (or replace) a key from the Control Center. The value goes to macOS's `security` tool
+ * on its standard input (interactive mode), never on a command line, so it doesn't show in
+ * the process list or any log.
+ */
+export function storeSecret(name: SecretName, value: string): void {
+  const s = SECRETS[name];
+  const v = value.trim();
+  if (!/^[A-Za-z0-9_\-.:]{8,400}$/.test(v)) {
+    throw new Error("that doesn't look like an API key (letters, digits, - _ . only; no spaces)");
+  }
+  const user = os.userInfo().username.replace(/[^A-Za-z0-9_.-]/g, "");
+  execFileSync("security", ["-i"], {
+    input: `add-generic-password -U -a "${user}" -s "${s.service}" -l "${s.label}" -w "${v}"\n`,
+    stdio: ["pipe", "ignore", "pipe"],
+    timeout: 10_000,
+  });
+}

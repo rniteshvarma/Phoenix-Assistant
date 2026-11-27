@@ -142,3 +142,19 @@ export function renderRecall(r: Recall): string[] {
   }
   return lines;
 }
+
+/** The skill index: names and one-line descriptions only (cached with the profile). */
+export function renderSkillIndex(skills: ReadonlyArray<{ name: string; description: string }>): string {
+  if (skills.length === 0) return "";
+  return ["<skills>", ...skills.map((s) => `- ${s.name}: ${s.description}`), "</skills>"].join("\n");
+}
+
+/** The saved skill that clearly fits this request, if any (its steps go in the context). */
+export function matchSkill<T extends { id: number; name: string; description: string; steps: string }>(
+  request: string,
+  skills: readonly T[],
+): T | undefined {
+  const items = skills.map((s) => ({ id: s.id, kind: "fact" as const, subject: s.name, text: s.description, createdAt: 0 }));
+  const best = rank(request, items, 1)[0];
+  return best && skills.find((s) => s.id === best.id);
+}

@@ -37,12 +37,10 @@ final class VoiceListener {
 
     /// "Phoenix, rise" — tolerant of how speech recognition may spell it
     /// ("Phoenix rise", "Phoenix arise", "Phenix rice", …).
-    private static let wakePattern = "\\b(phoenix|phenix|fenix|feenix|phoenix's)[,.!?…]?\\s+a?(rise|rises|rize|ryse|rice|rhys)\\b"
+    private static var wakePattern: String { Persona.wakePattern }
 
     /// "Phoenix, stop" / "stop, Phoenix" / "Phoenix, quiet" / "Phoenix, enough" / "Phoenix, cancel".
-    static let stopPattern =
-        "\\b(phoenix|phenix|fenix|feenix)[,.!?…]?\\s+(stop|quiet|enough|cancel|shut up|be quiet)\\b" +
-        "|\\b(stop|quiet)[,.!?…]?\\s+(phoenix|phenix|fenix|feenix)\\b"
+    static var stopPattern: String { Persona.stopPattern }
 
     /// Ask for microphone + speech permission and pick an on-device recogniser.
     func prepare() async -> String? {
@@ -134,7 +132,7 @@ final class VoiceListener {
         req.shouldReportPartialResults = true
         req.requiresOnDeviceRecognition = true
         req.addsPunctuation = true
-        req.contextualStrings = ["Phoenix, rise", "Phoenix rise", "Phoenix, stop", "Phoenix"]
+        req.contextualStrings = [Persona.wakePhrase, "\(Persona.name), stop", Persona.name]
         lock.lock(); request = req; lock.unlock()
         task = recognizer.recognitionTask(with: req) { [weak self] result, error in
             DispatchQueue.main.async { self?.handle(result: result, error: error, for: req) }

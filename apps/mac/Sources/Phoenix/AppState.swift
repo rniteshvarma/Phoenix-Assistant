@@ -42,6 +42,9 @@ struct ApprovalCard: Identifiable, Equatable {
 @MainActor
 final class AppState: ObservableObject {
     @Published var phase: Phase = .offline
+    /// Bumped when the theme changes (views keyed on it redraw in the new colors).
+    @Published var themeID = Theme.current.id
+    @Published var assistantName = Persona.name
     @Published var connected = false
     @Published var channel: String = "voice"
     @Published var userText = ""

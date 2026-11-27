@@ -9,6 +9,7 @@ import { TIER_LABEL } from "../policy/tiers.ts";
 import { KIND_LABEL, type Kind } from "../privacy/detect.ts";
 import type { SpeechSynth } from "../voice/tts.ts";
 import { Inbound } from "./protocol.ts";
+import { handleAdmin, type AdminHooks } from "../admin/admin.ts";
 import { tokenMatches } from "./token.ts";
 
 export interface GatewayOptions {
@@ -19,6 +20,8 @@ export interface GatewayOptions {
   /** Creates the model for each request (Claude, or the scripted model offline). */
   modelFactory: (request: string) => ModelClient;
   offline?: boolean;
+  /** Control Center hooks (e.g. rebuild the Claude client when a key changes). */
+  admin?: AdminHooks;
   /** Proactive features (morning briefing on request, pause). */
   proactive?: { briefNow(): Promise<void>; pause(minutes: number): void };
   /** Cloud voice for spoken replies; null/undefined means the app uses its on-device voice. */
@@ -177,6 +180,12 @@ export function startGateway(phoenix: Phoenix, opts: GatewayOptions): Promise<Ga
 
         case "cancel":
           running?.abort();
+          break;
+
+        case "admin":
+          handleAdmin(phoenix, msg.request, opts.admin)
+            .then((data) => send({ type: "admin.result", id: msg.id, ok: true, data }))
+            .catch((err) => send({ type: "admin.result", id: msg.id, ok: false, error: errorText(err) }));
           break;
 
         case "brief.now":
