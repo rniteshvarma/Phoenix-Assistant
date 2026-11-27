@@ -52,7 +52,7 @@ final class CoreClient: NSObject {
         send([
             "type": "hello",
             "device": "Mac",
-            "capabilities": ["calendar.read"],
+            "capabilities": ["calendar.read", "calendar.write", "reminders", "contacts", "messages", "apple.notes", "apps", "notify"],
         ])
     }
 

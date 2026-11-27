@@ -18,6 +18,8 @@ import os from "node:os";
 import path from "node:path";
 import { KIND_LABEL } from "../privacy/detect.ts";
 import { scanDocument } from "../privacy/documents.ts";
+import { ProactiveScheduler } from "../proactive/scheduler.ts";
+import { minutesOf } from "../proactive/schedule.ts";
 import {
   APP_LABEL, APP_PATH, CORE_LABEL, CORE_LOG, agentStatus, appAgent, coreAgent, coreResponds, installAgent,
   removeAgent, restartCore, tailLog,
@@ -31,6 +33,11 @@ ${c.ember("Phoenix")} — CLI
   phoenix "<request>"            One request with Claude
   phoenix chat                   Ongoing conversation in the terminal (/new = fresh topic)
   phoenix serve                  Run the Phoenix core for the Mac app (local gateway)
+  phoenix proactive              Morning briefing & nudges: show settings
+  phoenix proactive on|off       Turn proactive Phoenix on or off
+  phoenix proactive brief HH:MM [daily|weekdays]   Set the morning briefing time
+  phoenix proactive quiet HH:MM-HH:MM               Set quiet hours (no nudges)
+  phoenix proactive lead <minutes>                  Nudge this long before meetings
   phoenix autostart on           Start the core (and Mac app) automatically when you log in
   phoenix autostart off          Stop starting automatically
   phoenix autostart [status]     Is the core running? Recent log lines
@@ -79,6 +86,8 @@ async function main(argv: string[]): Promise<number> {
         return await autostartCommand(rest);
       case "scan":
         return await scanCommand(phoenix, rest);
+      case "proactive":
+        return proactiveCommand(phoenix, rest);
       default: {
         const request = args.join(" ").trim();
         if (!request) {
@@ -184,6 +193,61 @@ async function keyCommand(args: string[]): Promise<number> {
 
   process.stderr.write("  Usage: phoenix key [status|set|remove] [anthropic|elevenlabs]\n");
   return 2;
+}
+
+/** `phoenix proactive …` — settings for the morning briefing and nudges (read by the background core). */
+function proactiveCommand(phoenix: Phoenix, args: string[]): number {
+  const [action, ...rest] = args;
+  try {
+    switch (action) {
+      case undefined:
+      case "status":
+        break;
+      case "on":
+      case "off":
+        phoenix.settings.updateProactive({ enabled: action === "on", pausedUntil: 0 });
+        break;
+      case "brief": {
+        minutesOf(rest[0] ?? "");
+        const days = rest[1] === "weekdays" ? "weekdays" : "daily";
+        phoenix.settings.updateProactive({ briefTime: rest[0]!, briefDays: days });
+        break;
+      }
+      case "quiet": {
+        const [start, end] = (rest[0] ?? "").split("-");
+        minutesOf(start ?? "");
+        minutesOf(end ?? "");
+        phoenix.settings.updateProactive({ quietStart: start!, quietEnd: end! });
+        break;
+      }
+      case "lead": {
+        const n = Number(rest[0]);
+        if (!Number.isInteger(n) || n < 1 || n > 120) throw new Error("lead must be 1–120 minutes");
+        phoenix.settings.updateProactive({ meetingLead: n });
+        break;
+      }
+      default:
+        process.stderr.write("  Usage: phoenix proactive [on|off|brief HH:MM [daily|weekdays]|quiet HH:MM-HH:MM|lead N]\n");
+        return 2;
+    }
+  } catch (err) {
+    process.stderr.write(`  ${c.red("✗")} ${err instanceof Error ? err.message : String(err)}\n`);
+    return 2;
+  }
+  const s = phoenix.settings.proactive();
+  const paused = s.pausedUntil > Date.now() ? ` (paused until ${new Date(s.pausedUntil).toLocaleTimeString()})` : "";
+  process.stdout.write(
+    [
+      "",
+      `  ${s.enabled ? c.green("✓ Proactive Phoenix is on") : c.amber("– Proactive Phoenix is off")}${paused}`,
+      `  ${c.dim("Morning briefing")}  ${s.briefTime} ${s.briefDays === "weekdays" ? "on weekdays" : "every day"}`,
+      `  ${c.dim("Meeting nudges")}    ${s.meetingLead} minutes before`,
+      `  ${c.dim("Quiet hours")}       ${s.quietStart}–${s.quietEnd} ${c.dim("(no briefing or nudges)")}`,
+      `  ${c.dim("Daily limit")}       ${s.maxPerDay} messages`,
+      "",
+    ].join("\n") + "\n",
+  );
+  return 0;
 }
 
 /** `phoenix scan <file>` — show how Phoenix would treat a document, all on this Mac. */
@@ -409,6 +473,10 @@ async function serve(phoenix: Phoenix, offline: boolean): Promise<number> {
   const token = loadOrCreateGatewayToken(phoenix.cfg);
   const port = Number(process.env.PHOENIX_PORT ?? 7788);
   const speech = speechFromEnvironment(process.env, phoenix.cfg.home);
+  const proactive = new ProactiveScheduler(phoenix, {
+    makeModel: () => makeModel("briefing"),
+    log: (line) => process.stdout.write(`  ${c.dim(new Date().toLocaleTimeString())} ${line}\n`),
+  });
   if (speech instanceof KokoroSpeech) {
     speech.warmUp().catch((err) => process.stdout.write(`  ${c.red("voice")} couldn't load the local voice: ${err}\n`));
   }
@@ -419,6 +487,7 @@ async function serve(phoenix: Phoenix, offline: boolean): Promise<number> {
     token,
     offline,
     speech,
+    proactive,
     modelFactory: makeModel,
     log: (line) => process.stdout.write(`  ${c.dim(new Date().toLocaleTimeString())} ${line}\n`),
     });
@@ -449,10 +518,12 @@ async function serve(phoenix: Phoenix, offline: boolean): Promise<number> {
       "",
     ].join("\n"),
   );
+  proactive.start();
   await new Promise<void>((resolve) => {
     process.once("SIGINT", resolve);
     process.once("SIGTERM", resolve);
   });
+  proactive.stop();
   process.stdout.write(`\n  ${c.dim("Stopping…")}\n`);
   await gateway.close();
   return 0;

@@ -26,6 +26,11 @@ CREATE TABLE IF NOT EXISTS memories (
   created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS protected_values (
   token       TEXT PRIMARY KEY,
   kind        TEXT NOT NULL,

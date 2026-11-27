@@ -19,6 +19,8 @@ export interface GatewayOptions {
   /** Creates the model for each request (Claude, or the scripted model offline). */
   modelFactory: (request: string) => ModelClient;
   offline?: boolean;
+  /** Proactive features (morning briefing on request, pause). */
+  proactive?: { briefNow(): Promise<void>; pause(minutes: number): void };
   /** Cloud voice for spoken replies; null/undefined means the app uses its on-device voice. */
   speech?: SpeechSynth | null;
   log?: (line: string) => void;
@@ -175,6 +177,15 @@ export function startGateway(phoenix: Phoenix, opts: GatewayOptions): Promise<Ga
 
         case "cancel":
           running?.abort();
+          break;
+
+        case "brief.now":
+          opts.proactive?.briefNow().catch((err) => log(`briefing failed: ${errorText(err)}`));
+          break;
+
+        case "proactive.pause":
+          opts.proactive?.pause(msg.minutes);
+          log(`proactive paused for ${msg.minutes} min`);
           break;
 
         case "tool.result":

@@ -24,6 +24,8 @@ export const Inbound = z.discriminatedUnion("type", [
     feedback: z.string().max(2000).optional(),
   }),
   z.object({ type: z.literal("cancel") }),
+  z.object({ type: z.literal("brief.now") }),
+  z.object({ type: z.literal("proactive.pause"), minutes: z.number().int().min(1).max(24 * 60) }),
   z.object({
     type: z.literal("speak"),
     id: z.string().min(1).max(64),
@@ -48,5 +50,6 @@ export type InboundMessage = z.infer<typeof Inbound>;
  *  { type: "approval.request", requestId, proposal: { id, tool, tier, tierLabel, summary, input, payloadHash } }
  *  { type: "tool.call", callId, tool, input }
  *  { type: "done", requestId, status, text, sessionId }
+ *  { type: "proactive", kind: "brief" | "nudge", title, text }
  *  { type: "error", message }
  */

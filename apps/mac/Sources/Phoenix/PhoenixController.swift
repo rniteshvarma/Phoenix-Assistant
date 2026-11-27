@@ -9,6 +9,7 @@ final class PhoenixController {
     private let speaker = Speaker()
     private let listener = VoiceListener()
     private let calendar = CalendarBridge()
+    private let actions = MacActions()
     private let summonFX = SummonOverlay()
     let stats = PhoenixStats()
     /// When you stopped talking, for the request whose first spoken word we're waiting on.
@@ -224,6 +225,47 @@ final class PhoenixController {
 
     private var pendingNewSession = false
 
+    // MARK: - Proactive (morning briefing, meeting & reminder nudges)
+
+    /// Speak proactive messages aloud (otherwise they are only shown). Kept on this Mac.
+    var proactiveSpeaks: Bool {
+        get { UserDefaults.standard.object(forKey: "proactive.speak") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "proactive.speak") }
+    }
+
+    func briefNow() {
+        guard state.connected else { state.statusLine = "The Phoenix core isn't running."; return }
+        state.statusLine = "Preparing your briefing…"
+        core.send(["type": "brief.now"])
+    }
+
+    func pauseProactive(minutes: Int) {
+        core.send(["type": "proactive.pause", "minutes": minutes])
+        state.statusLine = "Proactive messages paused for \(minutes >= 60 ? "\(minutes / 60) h" : "\(minutes) min")."
+    }
+
+    private func showProactive(title: String, text: String) {
+        guard !text.isEmpty else { return }
+        // Never interrupt something you're doing with Phoenix: keep it as a status note instead.
+        if state.busy || state.approval != nil || state.typing || listener.mode == .command {
+            state.statusLine = "\(title): \(text)"
+            return
+        }
+        resetForNewRequest()
+        state.userText = title
+        state.replyText = text
+        state.phase = .done
+        requestChannel = proactiveSpeaks ? "voice" : "text"
+        show()
+        if proactiveSpeaks {
+            speaker.stop()
+            speaker.say(text)
+            speaker.flush()
+        } else {
+            scheduleHide()
+        }
+    }
+
     // MARK: - Core messages
 
     private func connectionChanged(_ up: Bool) {
@@ -289,6 +331,8 @@ final class PhoenixController {
             }
         case "tool.call":
             runToolCall(m)
+        case "proactive":
+            showProactive(title: m["title"] as? String ?? "Phoenix", text: m["text"] as? String ?? "")
         case "done":
             guard (m["requestId"] as? String) == requestId else { return }
             requestId = nil
@@ -362,7 +406,8 @@ final class PhoenixController {
                     )
                     core.send(["type": "tool.result", "callId": callId, "ok": true, "output": output])
                 default:
-                    throw PhoenixError("this Mac app can't do \(tool)")
+                    let output = try await actions.run(tool, input)
+                    core.send(["type": "tool.result", "callId": callId, "ok": true, "output": output])
                 }
             } catch {
                 core.send(["type": "tool.result", "callId": callId, "ok": false, "error": error.localizedDescription])

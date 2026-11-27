@@ -43,6 +43,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func newConversation() { controller.newConversation() }
     @objc private func quit() { NSApp.terminate(nil) }
     @objc private func resetStats() { controller.stats.reset() }
+    @objc private func briefNow() { controller.briefNow() }
+    @objc private func pauseProactive() { controller.pauseProactive(minutes: 60) }
+    @objc private func toggleProactiveVoice() { controller.proactiveSpeaks.toggle() }
 
     /// Start (or restart) the background core installed by `phoenix autostart on`.
     @objc private func startCore() {
@@ -98,6 +101,18 @@ extension AppDelegate: NSMenuDelegate {
         let stopItem = NSMenuItem(title: "Stop Phoenix", action: #selector(stop), keyEquivalent: "")
         stopItem.target = self
         menu.addItem(stopItem)
+
+        menu.addItem(.separator())
+        let brief = NSMenuItem(title: "Brief me now", action: #selector(briefNow), keyEquivalent: "")
+        brief.target = self
+        menu.addItem(brief)
+        let pause = NSMenuItem(title: "Pause proactive for 1 hour", action: #selector(pauseProactive), keyEquivalent: "")
+        pause.target = self
+        menu.addItem(pause)
+        let voice = NSMenuItem(title: "Speak briefings and nudges", action: #selector(toggleProactiveVoice), keyEquivalent: "")
+        voice.target = self
+        voice.state = controller.proactiveSpeaks ? .on : .off
+        menu.addItem(voice)
 
         menu.addItem(.separator())
         let testHeader = NSMenuItem(title: "Phase 1 exit test", action: nil, keyEquivalent: "")

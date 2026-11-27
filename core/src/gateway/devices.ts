@@ -38,6 +38,18 @@ export class DeviceHub {
     }
   }
 
+  /** Send a message to every connected app with this capability; returns how many got it. */
+  broadcast(capability: string, message: Record<string, unknown>): number {
+    let sent = 0;
+    for (const link of this.#links.values()) {
+      if (link.capabilities.has(capability)) {
+        link.send(message);
+        sent += 1;
+      }
+    }
+    return sent;
+  }
+
   has(capability: string): boolean {
     return [...this.#links.values()].some((l) => l.capabilities.has(capability));
   }

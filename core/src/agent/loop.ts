@@ -3,7 +3,7 @@ import type { AuditLog } from "../audit/log.ts";
 import type { ActionProposal, ApprovalAuthority } from "../policy/approvals.ts";
 import type { PolicyEngine } from "../policy/engine.ts";
 import type { GuardedExecutor } from "../policy/executor.ts";
-import type { Tier } from "../policy/tiers.ts";
+import { Tier } from "../policy/tiers.ts";
 import type { TaskStore } from "../store/tasks.ts";
 import type { Tool, ToolRegistry } from "../tools/types.ts";
 import { StreamRevealer, type PrivacyVault } from "../privacy/vault.ts";
@@ -58,6 +58,8 @@ export interface RunOptions {
   history?: Anthropic.Beta.BetaMessageParam[];
   /** Per-turn <context> block placed before the request in the user's message. */
   context?: string;
+  /** Only read-only tools may run (automatic briefings never change anything). */
+  readOnly?: boolean;
 }
 
 type ToolUse = Anthropic.Beta.BetaToolUseBlockParam;
@@ -131,6 +133,12 @@ export async function runTask(
 
       const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
       for (const use of toolUses) {
+        const tier = deps.registry.get(use.name)?.tier;
+        if (opts.readOnly && tier !== undefined && tier > Tier.Read) {
+          results.push({ type: "tool_result", tool_use_id: use.id, is_error: true,
+            content: "Not allowed here: this is a read-only briefing. Don't change anything." });
+          continue;
+        }
         results.push(await handleToolUse(deps, taskId, use, emit, opts.signal));
       }
       messages.push({ role: "user", content: results });

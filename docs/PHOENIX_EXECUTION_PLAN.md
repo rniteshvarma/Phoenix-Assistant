@@ -298,6 +298,7 @@ Each phase ends with an **exit test** you can demo. Don't start the next phase u
 - **Exit test:** on mobile data, away from home: press Action Button → "Reply to Rahul that I'm running 10 minutes late" → draft arrives as notification → approve with Face ID → sent from the Mac; whole flow < 20 s.
 
 ### Phase 4 — Hands: computer use & app automation (Weeks 12–15)
+> **Progress (27 Nov 2026):** 4a done — Reminders, calendar add, Contacts → iMessage, Apple Notes, open apps/URLs, move/trash files, Shortcuts, all through official APIs. **Next, 4b:** computer use on the Mac screen with on-device screenshot redaction (Privacy Shield), Live Screen Mode, per-app allowlist, then iPhone Mirroring.
 - macOS actuators: AppleScript/Shortcuts runners (Messages, Notes, Reminders, Music, Finder), Accessibility tree reader (more reliable than pixels), ScreenCaptureKit screenshots.
 - Claude computer use (`computer_toolset_20260801`) on the Mac display, with Live Screen Mode UI, user-input-pauses-agent, and per-app allowlist.
 - **iPhone Mirroring bridge:** open an iPhone app in the mirror window and operate it (Swiggy/Zomato, Uber/Ola, banking apps for *viewing*).
@@ -319,6 +320,7 @@ Each phase ends with an **exit test** you can demo. Don't start the next phase u
 - **Exit test:** "Find me a Bangalore → Delhi flight Friday evening under ₹8,000 and a hotel near Connaught Place" → options in < 3 min → booked after your approval and OTP; confirmations filed; check-in reminder scheduled.
 
 ### Phase 7 — Proactive Phoenix (Weeks 22–23)
+> **Progress (27 Nov 2026):** 7a done — read-only morning briefing, meeting and reminder nudges, quiet hours, daily limit, pause. Email/bill/check-in watchers wait for the email connectors (on hold).
 - Watchers: new important email, calendar conflicts, flight check-in windows, bills due, unanswered threads > 3 days, subscription renewals.
 - Daily brief (morning, voice + Story Mode), weekly review.
 - "Do-not-disturb" rules and a quiet-hours budget for proactive pings.

@@ -18,7 +18,27 @@ Full plan: [docs/PHOENIX_EXECUTION_PLAN.md](docs/PHOENIX_EXECUTION_PLAN.md)
 | Tools: `notes_save` (T1), `notes_list`/`notes_read` (T0), `outbox_send` (T2, simulated) | `core/src/tools/builtin.ts` |
 | CLI with terminal approval cards | `core/src/cli/` |
 
-## Status: Phase 1 — Mac voice, Summon Bar & memory (in progress)
+## Status: Phase 4a (Mac actions) & 7a (proactive) ✅ — Phase 4b (screen control) next
+
+| Piece | Where |
+|---|---|
+| Reminders (list, add, complete), add calendar events — EventKit in the Mac app | `core/src/tools/mac.ts`, `apps/mac/…/MacActions.swift` |
+| Contacts lookup, iMessage send (always needs your OK; a protected number needs it twice) | same |
+| Apple Notes, open apps / web pages, move files, move to Trash, run Shortcuts | same |
+| Morning briefing (read-only), meeting & reminder nudges, quiet hours, daily limit, pause | `core/src/proactive/` |
+
+```bash
+npm run phoenix -- proactive                      # show settings
+npm run phoenix -- proactive brief 08:00 weekdays # briefing time
+npm run phoenix -- proactive quiet 22:00-07:30    # no briefing or nudges in these hours
+npm run phoenix -- proactive lead 10              # nudge 10 minutes before meetings
+npm run phoenix -- proactive off                  # turn it all off
+```
+
+The menu bar flame also has **Brief me now**, **Pause proactive for 1 hour** and **Speak briefings and nudges**.
+The first time, macOS asks to let Phoenix use Reminders, Contacts, and control Messages and Notes (Automation).
+
+## Status: Phase 1 — Mac voice, Summon Bar & memory ✅
 
 | Piece | Where |
 |---|---|

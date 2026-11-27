@@ -6,6 +6,7 @@ import { ensureDirs, type PhoenixConfig } from "./config.ts";
 import { DeviceHub } from "./gateway/devices.ts";
 import { ApprovalAuthority } from "./policy/approvals.ts";
 import { PrivacyVault } from "./privacy/vault.ts";
+import { SettingsStore } from "./proactive/schedule.ts";
 import { PolicyEngine } from "./policy/engine.ts";
 import { GuardedExecutor } from "./policy/executor.ts";
 import { loadKeys } from "./security/keys.ts";
@@ -26,6 +27,8 @@ export interface AskOptions {
   signal?: AbortSignal;
   /** Override the clock (tests). */
   now?: Date;
+  /** Only allow read-only tools (used for automatic briefings). */
+  readOnly?: boolean;
 }
 
 export interface AskResult extends TaskOutcome {
@@ -42,6 +45,7 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
   const sessions = new SessionStore(db, keys.dataKey);
   const memory = new MemoryStore(db, keys.dataKey);
   const devices = new DeviceHub();
+  const settings = new SettingsStore(db);
   const vault = new PrivacyVault(db, keys.dataKey, keys.privacyKey);
   const registry = new ToolRegistry(opts.tools ?? BUILTIN_TOOLS);
   const policy = new PolicyEngine(registry);
@@ -64,6 +68,7 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
     sessions,
     memory,
     devices,
+    settings,
     vault,
     registry,
     policy,
@@ -85,7 +90,7 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
       const outcome = await runTask(
         { model: o.model, approver: o.approver, registry, policy, authority, executor, audit, tasks, vault, maxSteps: cfg.maxSteps },
         safeRequest,
-        { onEvent: o.onEvent, signal: o.signal, history: session.messages, context: safeContext },
+        { onEvent: o.onEvent, signal: o.signal, history: session.messages, context: safeContext, readOnly: o.readOnly },
       );
       sessions.save(session.id, outcome.messages, session.turns + 1);
       return { ...outcome, sessionId: session.id };

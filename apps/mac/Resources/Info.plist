@@ -16,5 +16,10 @@
     <key>NSSpeechRecognitionUsageDescription</key><string>Phoenix turns your speech into text on this Mac so it can understand your requests.</string>
     <key>NSCalendarsFullAccessUsageDescription</key><string>Phoenix reads your calendar when you ask about your schedule. It never changes events without your approval.</string>
     <key>NSCalendarsUsageDescription</key><string>Phoenix reads your calendar when you ask about your schedule.</string>
+    <key>NSCalendarsWriteOnlyAccessUsageDescription</key><string>Phoenix adds events to your calendar when you ask it to.</string>
+    <key>NSRemindersFullAccessUsageDescription</key><string>Phoenix reads and adds reminders when you ask, and reminds you when they're due.</string>
+    <key>NSRemindersUsageDescription</key><string>Phoenix reads and adds reminders when you ask.</string>
+    <key>NSContactsUsageDescription</key><string>Phoenix looks up people in your contacts when you ask it to message someone. Phone numbers and emails stay on this Mac.</string>
+    <key>NSAppleEventsUsageDescription</key><string>Phoenix sends iMessages and creates Apple Notes for you, only after you approve.</string>
 </dict>
 </plist>
