@@ -1,7 +1,7 @@
 import type { AuditLog } from "../audit/log.ts";
 import type { PhoenixConfig } from "../config.ts";
 import { sha256Hex } from "../security/canonical.ts";
-import type { ToolRegistry, ToolServices } from "../tools/types.ts";
+import type { ToolRegistry, ToolServices, ToolSession } from "../tools/types.ts";
 import type { ApprovalAuthority, ApprovalToken } from "./approvals.ts";
 import type { PrivacyVault } from "../privacy/vault.ts";
 import type { PolicyEngine } from "./engine.ts";
@@ -51,7 +51,7 @@ export class GuardedExecutor {
    * here, on this Mac, just before the tool runs, and the output is protected again before it
    * goes back to the model. Protected values may only leave the Mac with a twice-confirmed approval.
    */
-  async execute(call: ToolCall, token?: ApprovalToken): Promise<ExecResult> {
+  async execute(call: ToolCall, token?: ApprovalToken, session?: ToolSession): Promise<ExecResult> {
     const vault = this.#vault;
     const fail = (error: string): ExecResult => ({ ok: false, error: vault.protect(error).text });
 
@@ -94,6 +94,7 @@ export class GuardedExecutor {
         ...this.#services,
         cfg: this.#cfg,
         taskId: call.taskId,
+        session,
       });
       const safe = vault.protect(output).text;
       this.#audit.append("tool.executed", call.taskId, {

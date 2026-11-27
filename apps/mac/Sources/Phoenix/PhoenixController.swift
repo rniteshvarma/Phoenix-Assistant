@@ -175,6 +175,7 @@ final class PhoenixController {
                 core.send(["type": "approval", "proposalId": card.id, "decision": "approve"])
                 state.approval = nil
                 state.phase = .working
+                resumeScreenAfterApproval()
             } else {
                 state.statusLine = "Not approved: Touch ID / password was cancelled."
             }
@@ -188,6 +189,14 @@ final class PhoenixController {
         core.send(message)
         state.approval = nil
         state.phase = .working
+        resumeScreenAfterApproval()
+    }
+
+    /// During screen control, get Phoenix's own panel out of the way and hand the screen back.
+    private func resumeScreenAfterApproval() {
+        guard actions.screen.active else { return }
+        actions.screen.suspendTakeover(false)
+        hide()
     }
 
     /// Silence Phoenix but keep the panel (and any running task) as it is.
@@ -323,6 +332,7 @@ final class PhoenixController {
             )
             state.changingApproval = false
             state.approvalFeedback = ""
+            if actions.screen.active { actions.screen.suspendTakeover(true) }
             state.phase = .waitingForYou
             show(focus: true)
             if requestChannel == "voice", let card = state.approval {

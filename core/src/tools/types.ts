@@ -5,17 +5,30 @@ import type { DeviceHub } from "../gateway/devices.ts";
 import type { Tier } from "../policy/tiers.ts";
 import type { MemoryStore } from "../store/memory.ts";
 import type { PrivacyVault } from "../privacy/vault.ts";
+import type { SettingsStore } from "../proactive/schedule.ts";
+import type { ScreenModel } from "../screen/session.ts";
 
 /** Shared services tools may use. */
 export interface ToolServices {
   memory: MemoryStore;
   devices: DeviceHub;
   vault: PrivacyVault;
+  settings: SettingsStore;
+}
+
+/** Per-run hooks for long tools that need the user part-way through (screen control). */
+export interface ToolSession {
+  /** Show an approval card; with `kinds` (protected details) it asks twice. True if approved. */
+  confirm(summary: string, kinds?: string[]): Promise<boolean>;
+  signal?: AbortSignal;
+  /** A model able to drive the screen, if this run has one (not offline/scripted runs). */
+  screenModel?: () => ScreenModel;
 }
 
 export interface ToolContext extends ToolServices {
   cfg: PhoenixConfig;
   taskId: string;
+  session?: ToolSession;
 }
 
 /** What a skill author writes. */

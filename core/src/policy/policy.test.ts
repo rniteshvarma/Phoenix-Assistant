@@ -10,6 +10,7 @@ import { ensureDirs } from "../config.ts";
 import { DeviceHub } from "../gateway/devices.ts";
 import { MemoryStore } from "../store/memory.ts";
 import { PrivacyVault } from "../privacy/vault.ts";
+import { SettingsStore } from "../proactive/schedule.ts";
 import { ApprovalAuthority } from "./approvals.ts";
 import { PolicyEngine } from "./engine.ts";
 import { GuardedExecutor } from "./executor.ts";
@@ -107,7 +108,7 @@ test("executor refuses gated tools without a valid token, and runs them with one
     const policy = new PolicyEngine(registry);
     const authority = authorityAt({ now: Date.now() });
     const vault = new PrivacyVault(db, randomBytes(32), randomBytes(32));
-    const services = { memory: new MemoryStore(db, randomBytes(32)), devices: new DeviceHub(), vault };
+    const services = { memory: new MemoryStore(db, randomBytes(32)), devices: new DeviceHub(), vault, settings: new SettingsStore(db) };
     const executor = new GuardedExecutor({ registry, policy, authority, audit, cfg, services, vault });
     const call = { taskId: "task-1", toolUseId: "tu-1", name: "outbox_send", input: email };
 

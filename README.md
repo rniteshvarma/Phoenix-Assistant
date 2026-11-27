@@ -18,7 +18,30 @@ Full plan: [docs/PHOENIX_EXECUTION_PLAN.md](docs/PHOENIX_EXECUTION_PLAN.md)
 | Tools: `notes_save` (T1), `notes_list`/`notes_read` (T0), `outbox_send` (T2, simulated) | `core/src/tools/builtin.ts` |
 | CLI with terminal approval cards | `core/src/cli/` |
 
-## Status: Phase 4a (Mac actions) & 7a (proactive) ✅ — Phase 4b (screen control) next
+## Status: Phase 4b — screen control (built, being tested)
+
+Phoenix can operate one app on your screen (WhatsApp Desktop, Safari/Chrome, iPhone apps through
+**iPhone Mirroring**) using Claude's computer use, for the errands in [docs/ERRANDS.md](docs/ERRANDS.md).
+
+| Safety rule (enforced in code) | Where |
+|---|---|
+| Asks before every screen session; again before Send/Submit/Book/Delete or Return in a chat | `core/src/screen/session.ts` |
+| Never presses payment buttons; never operates banking, UPI, trading, password or system apps | same + `ScreenControl.swift` |
+| Only the chosen app is captured; sensitive lines are blacked out on this Mac before sending | `apps/mac/…/ScreenControl.swift` |
+| Clicks only land on that app's own window; typing only when it's in front | same |
+| Typing a protected detail (e.g. a phone number) needs your OK twice | `core/src/screen/session.ts` |
+| Move the mouse or press a key and Phoenix stops immediately (glowing frame shows it's driving) | `ScreenControl.swift` |
+
+```bash
+npm run phoenix -- screen                    # apps Phoenix may operate
+npm run phoenix -- screen allow "Telegram"   # add one (it still asks before each session)
+npm run phoenix -- screen deny "Safari"      # remove one
+```
+
+The first time, macOS asks for **Screen & System Audio Recording** and **Accessibility** for Phoenix.
+(Because the app is self-signed, a rebuild can make macOS ask again.)
+
+## Status: Phase 4a (Mac actions) & 7a (proactive) ✅
 
 | Piece | Where |
 |---|---|

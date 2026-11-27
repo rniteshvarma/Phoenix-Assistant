@@ -5,6 +5,7 @@ import { Tier } from "../policy/tiers.ts";
 import { calendarEvents } from "./calendar.ts";
 import { documentRead, documentsList } from "./documents.ts";
 import { MAC_TOOLS } from "./mac.ts";
+import { screenAct } from "./screen.ts";
 import { memoryForget, memoryRemember } from "./memory.ts";
 import { defineTool, type Tool } from "./types.ts";
 
@@ -109,6 +110,7 @@ export const outboxSend = defineTool({
 });
 
 export const BUILTIN_TOOLS: Tool[] = [
+  screenAct,
   notesSave,
   notesList,
   notesRead,

@@ -19,6 +19,8 @@ import path from "node:path";
 import { KIND_LABEL } from "../privacy/detect.ts";
 import { scanDocument } from "../privacy/documents.ts";
 import { ProactiveScheduler } from "../proactive/scheduler.ts";
+import { NEVER_APPS } from "../screen/session.ts";
+import { allowedScreenApps } from "../tools/screen.ts";
 import { minutesOf } from "../proactive/schedule.ts";
 import {
   APP_LABEL, APP_PATH, CORE_LABEL, CORE_LOG, agentStatus, appAgent, coreAgent, coreResponds, installAgent,
@@ -38,6 +40,9 @@ ${c.ember("Phoenix")} — CLI
   phoenix proactive brief HH:MM [daily|weekdays]   Set the morning briefing time
   phoenix proactive quiet HH:MM-HH:MM               Set quiet hours (no nudges)
   phoenix proactive lead <minutes>                  Nudge this long before meetings
+  phoenix screen                 Apps Phoenix may operate on screen (and the ones it never will)
+  phoenix screen allow "App"     Let Phoenix operate this app (it still asks before starting)
+  phoenix screen deny "App"      Take an app off the list
   phoenix autostart on           Start the core (and Mac app) automatically when you log in
   phoenix autostart off          Stop starting automatically
   phoenix autostart [status]     Is the core running? Recent log lines
@@ -88,6 +93,8 @@ async function main(argv: string[]): Promise<number> {
         return await scanCommand(phoenix, rest);
       case "proactive":
         return proactiveCommand(phoenix, rest);
+      case "screen":
+        return screenCommand(phoenix, rest);
       default: {
         const request = args.join(" ").trim();
         if (!request) {
@@ -193,6 +200,41 @@ async function keyCommand(args: string[]): Promise<number> {
 
   process.stderr.write("  Usage: phoenix key [status|set|remove] [anthropic|elevenlabs]\n");
   return 2;
+}
+
+/** `phoenix screen [allow|deny] "App"` — the apps screen control may operate. */
+function screenCommand(phoenix: Phoenix, args: string[]): number {
+  const [action, ...rest] = args;
+  const name = rest.join(" ").trim();
+  let apps = allowedScreenApps(phoenix.settings);
+  if (action === "allow" || action === "deny") {
+    if (!name) {
+      process.stderr.write(`  Usage: phoenix screen ${action} "App name"\n`);
+      return 2;
+    }
+    if (action === "allow" && NEVER_APPS.test(name)) {
+      process.stderr.write(`  ${c.red("✗")} Phoenix never operates ${name}: banking, payment, password and system apps stay off limits.\n`);
+      return 2;
+    }
+    apps = apps.filter((a) => a.toLowerCase() !== name.toLowerCase());
+    if (action === "allow") apps.push(name);
+    phoenix.settings.set("screen.apps", apps);
+  } else if (action !== undefined && action !== "list") {
+    process.stderr.write('  Usage: phoenix screen [allow|deny] "App name"\n');
+    return 2;
+  }
+  process.stdout.write(
+    [
+      "",
+      `  ${c.dim("Phoenix may operate these apps on screen (it asks you before every session):")}`,
+      ...apps.map((a) => `    • ${a}`),
+      "",
+      `  ${c.dim("Never, whatever you allow: banking, UPI/payment, trading, password managers, Terminal, System Settings.")}`,
+      `  ${c.dim("Private details are blanked out of screenshots on this Mac; touching the mouse or keyboard stops it.")}`,
+      "",
+    ].join("\n") + "\n",
+  );
+  return 0;
 }
 
 /** `phoenix proactive …` — settings for the morning briefing and nudges (read by the background core). */

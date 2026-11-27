@@ -1,5 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { MODELS } from "../config.ts";
+import { ClaudeScreenModel } from "../screen/model.ts";
+import type { ScreenModel } from "../screen/session.ts";
 
 export interface ModelRequest {
   system: string;
@@ -19,6 +21,8 @@ export interface ModelTurn {
 export interface ModelClient {
   readonly name: string;
   next(req: ModelRequest): Promise<ModelTurn>;
+  /** A model for operating the screen (computer use), if this client has one. */
+  screen?(): ScreenModel;
 }
 
 /** Server-side web search: runs on Anthropic's side, read-only, results come back as content. */
@@ -31,6 +35,10 @@ export class ClaudeModel implements ModelClient {
 
   constructor(client = new Anthropic()) {
     this.#client = client;
+  }
+
+  screen(): ScreenModel {
+    return new ClaudeScreenModel(this.#client);
   }
 
   async next(req: ModelRequest): Promise<ModelTurn> {

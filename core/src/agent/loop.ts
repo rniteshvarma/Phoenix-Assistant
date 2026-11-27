@@ -5,7 +5,7 @@ import type { PolicyEngine } from "../policy/engine.ts";
 import type { GuardedExecutor } from "../policy/executor.ts";
 import { Tier } from "../policy/tiers.ts";
 import type { TaskStore } from "../store/tasks.ts";
-import type { Tool, ToolRegistry } from "../tools/types.ts";
+import type { Tool, ToolRegistry, ToolSession } from "../tools/types.ts";
 import { StreamRevealer, type PrivacyVault } from "../privacy/vault.ts";
 import type { ModelClient } from "./model.ts";
 import { SYSTEM_PROMPT, wrapUntrusted } from "./prompts.ts";
@@ -202,6 +202,37 @@ async function handleToolUse(
   const input = vault.protectDeep(use.input);
   const call = { taskId, toolUseId: use.id, name: use.name, input };
 
+  // Long tools (screen control) can ask the user part-way through, through the same approval path.
+  const session: ToolSession = {
+    signal,
+    screenModel: deps.model.screen ? () => deps.model.screen!() : undefined,
+    confirm: async (summary, kinds = []) => {
+      const step = deps.authority.propose({
+        taskId, toolUseId: use.id, tool: use.name, tier: Tier.Act,
+        input: { step: vault.protect(summary).text }, summary: vault.reveal(summary), protectedKinds: kinds,
+      });
+      deps.audit.append("approval.proposed", taskId, {
+        proposalId: step.id, tool: use.name, summary: vault.protect(summary).text, payloadHash: step.payloadHash, protectedKinds: kinds,
+      });
+      deps.tasks.setStatus(taskId, "awaiting_approval");
+      try {
+        for (const p of kinds.length ? [step, deps.authority.confirmAgain(step)] : [step]) {
+          const d = await deps.approver.review(p, deps.registry.get(use.name)!, signal);
+          if (d.decision === "reject") {
+            deps.audit.append("approval.rejected", taskId, { proposalId: step.id, stage: p.stage, feedback: d.feedback ?? null });
+            emit({ type: "approval.decided", tool: use.name, decision: "reject" });
+            return false;
+          }
+        }
+      } finally {
+        deps.tasks.setStatus(taskId, "running");
+      }
+      deps.audit.append("approval.granted", taskId, { proposalId: step.id, confirmations: kinds.length ? 2 : 1 });
+      emit({ type: "approval.decided", tool: use.name, decision: "approve" });
+      return true;
+    },
+  };
+
   const decision = deps.policy.decide(use.name);
   deps.audit.append("policy.decision", taskId, { tool: use.name, toolUseId: use.id, decision });
 
@@ -220,7 +251,7 @@ async function handleToolUse(
 
   if (decision.kind === "allow" && !confirmTwice) {
     emit({ type: "tool.running", tool: use.name, tier: tool.tier, summary });
-    return toResult(await deps.executor.execute(call));
+    return toResult(await deps.executor.execute(call, undefined, session));
   }
 
   // Needs approval: freeze the exact payload, show it, and only run what was approved.
@@ -279,7 +310,7 @@ async function handleToolUse(
   });
   emit({ type: "approval.decided", tool: use.name, decision: "approve" });
   emit({ type: "tool.running", tool: use.name, tier: tool.tier, summary });
-  return toResult(await deps.executor.execute({ ...call, input: proposal.input }, token));
+  return toResult(await deps.executor.execute({ ...call, input: proposal.input }, token, session));
 
   function toResult(exec: Awaited<ReturnType<GuardedExecutor["execute"]>>) {
     if (!exec.ok) {

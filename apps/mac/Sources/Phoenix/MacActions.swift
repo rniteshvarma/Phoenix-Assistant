@@ -9,6 +9,7 @@ import Foundation
 final class MacActions {
     private let store = EKEventStore()
     private let contacts = CNContactStore()
+    let screen = ScreenControl()
 
     /// Run one tool the core asked for; returns the text result.
     func run(_ tool: String, _ input: [String: Any]) async throws -> String {
@@ -26,6 +27,7 @@ final class MacActions {
         case "messages_send": return try messagesSend(to: str("to") ?? "", text: str("text") ?? "")
         case "apple_notes_create": return try notesCreate(title: str("title") ?? "", body: str("body") ?? "")
         case "app_open": return try appOpen(str("target") ?? "")
+        case let t where t.hasPrefix("screen_"): return try await screen.run(t, input)
         default: throw PhoenixError("this Mac app can't do \(tool)")
         }
     }

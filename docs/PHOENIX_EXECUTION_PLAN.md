@@ -298,7 +298,7 @@ Each phase ends with an **exit test** you can demo. Don't start the next phase u
 - **Exit test:** on mobile data, away from home: press Action Button → "Reply to Rahul that I'm running 10 minutes late" → draft arrives as notification → approve with Face ID → sent from the Mac; whole flow < 20 s.
 
 ### Phase 4 — Hands: computer use & app automation (Weeks 12–15)
-> **Progress (27 Nov 2026):** 4a done — Reminders, calendar add, Contacts → iMessage, Apple Notes, open apps/URLs, move/trash files, Shortcuts, all through official APIs. **Next, 4b:** computer use on the Mac screen with on-device screenshot redaction (Privacy Shield), Live Screen Mode, per-app allowlist, then iPhone Mirroring.
+> **Progress (27 Nov 2026):** 4a done — Reminders, calendar add, Contacts → iMessage, Apple Notes, open apps/URLs, move/trash files, Shortcuts, all through official APIs. **4b built (27 Nov 2026):** computer use (`computer_toolset_20260801`) on one allowed app at a time, app-only capture, on-device OCR redaction, click-inside-app and front-app-only typing, final-step and payment guards, Live Screen Mode overlay with instant takeover, iPhone Mirroring as an allowed app. Benchmark = docs/ERRANDS.md (target ≥ 8/10).
 - macOS actuators: AppleScript/Shortcuts runners (Messages, Notes, Reminders, Music, Finder), Accessibility tree reader (more reliable than pixels), ScreenCaptureKit screenshots.
 - Claude computer use (`computer_toolset_20260801`) on the Mac display, with Live Screen Mode UI, user-input-pauses-agent, and per-app allowlist.
 - **iPhone Mirroring bridge:** open an iPhone app in the mirror window and operate it (Swiggy/Zomato, Uber/Ola, banking apps for *viewing*).
