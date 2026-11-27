@@ -6,6 +6,7 @@ import type { GuardedExecutor } from "../policy/executor.ts";
 import type { Tier } from "../policy/tiers.ts";
 import type { TaskStore } from "../store/tasks.ts";
 import type { Tool, ToolRegistry } from "../tools/types.ts";
+import { StreamRevealer, type PrivacyVault } from "../privacy/vault.ts";
 import type { ModelClient } from "./model.ts";
 import { SYSTEM_PROMPT, wrapUntrusted } from "./prompts.ts";
 
@@ -38,6 +39,8 @@ export interface AgentDeps {
   tasks: TaskStore;
   approver: Approver;
   maxSteps: number;
+  /** Privacy Shield: protected values are placeholders everywhere except on the user's screen. */
+  vault: PrivacyVault;
 }
 
 export interface TaskOutcome {
@@ -64,7 +67,11 @@ export async function runTask(
   request: string,
   opts: RunOptions = {},
 ): Promise<TaskOutcome> {
-  const emit = opts.onEvent ?? (() => {});
+  // `request` and `context` arrive already protected (placeholders instead of sensitive values).
+  // Everything shown to the user on this Mac is revealed; everything sent to the model is not.
+  const vault = deps.vault;
+  const show = opts.onEvent ?? (() => {});
+  const emit = (e: AgentEvent): void => show(revealEvent(vault, e));
   const taskId = deps.tasks.create(request);
   deps.audit.append("task.received", taskId, { request, model: deps.model.name });
   emit({ type: "task.started", taskId });
@@ -79,11 +86,15 @@ export async function runTask(
     deps.tasks.finish(taskId, status, text);
     deps.audit.append(`task.${status}`, taskId, { text });
     emit({ type: "task.finished", status, text });
-    return { taskId, status, text, messages };
+    return { taskId, status, text: vault.reveal(text), messages };
   };
 
   const tools = deps.registry.apiTools();
-  const onText = (delta: string) => emit({ type: "assistant.delta", text: delta });
+  const revealer = new StreamRevealer((t) => vault.reveal(t));
+  const onText = (delta: string) => {
+    const ready = revealer.push(delta);
+    if (ready) show({ type: "assistant.delta", text: ready });
+  };
   let lastText = "";
 
   try {
@@ -91,6 +102,8 @@ export async function runTask(
       if (opts.signal?.aborted) return finish("cancelled", "Stopped by the user.");
 
       const turn = await deps.model.next({ system: SYSTEM_PROMPT, messages, tools, onText });
+      const tail = revealer.flush();
+      if (tail) show({ type: "assistant.delta", text: tail });
       const texts = turn.content.filter((b) => b.type === "text").map((b) => b.text);
       const toolUses = turn.content.filter((b): b is ToolUse => b.type === "tool_use");
       deps.audit.append("model.turn", taskId, {
@@ -126,7 +139,7 @@ export async function runTask(
     return finish("failed", `Stopped after ${deps.maxSteps} steps (safety limit).`);
   } catch (err) {
     if (opts.signal?.aborted) return finish("cancelled", "Stopped by the user.");
-    return finish("failed", explainFailure(err));
+    return finish("failed", vault.protect(explainFailure(err)).text);
   }
 }
 
@@ -169,13 +182,17 @@ async function handleToolUse(
   emit: (e: AgentEvent) => void,
   signal?: AbortSignal,
 ): Promise<Anthropic.Beta.BetaToolResultBlockParam> {
+  const vault = deps.vault;
   const result = (content: string, isError = false): Anthropic.Beta.BetaToolResultBlockParam => ({
     type: "tool_result",
     tool_use_id: use.id,
     content,
     ...(isError ? { is_error: true } : {}),
   });
-  const call = { taskId, toolUseId: use.id, name: use.name, input: use.input };
+  // The model only ever sees placeholders, but protect its input anyway in case it produced a
+  // sensitive value on its own. This protected form is the payload that gets approved and run.
+  const input = vault.protectDeep(use.input);
+  const call = { taskId, toolUseId: use.id, name: use.name, input };
 
   const decision = deps.policy.decide(use.name);
   deps.audit.append("policy.decision", taskId, { tool: use.name, toolUseId: use.id, decision });
@@ -186,12 +203,16 @@ async function handleToolUse(
   }
 
   const tool = deps.registry.get(use.name)!;
-  const parsed = tool.parse(use.input);
-  if (!parsed.ok) return result(`Invalid input for ${use.name}:\n${parsed.error}`, true);
+  const parsed = tool.parse(vault.revealDeep(input));
+  if (!parsed.ok) return result(vault.protect(`Invalid input for ${use.name}:\n${parsed.error}`).text, true);
+  const summary = tool.describe(parsed.value); // real values: shown only on this Mac
+  // Protected data about to leave the Mac → the user must approve, then confirm again.
+  const protectedKinds = tool.leavesDevice ? vault.kindsIn(input) : [];
+  const confirmTwice = protectedKinds.length > 0;
 
-  if (decision.kind === "allow") {
-    emit({ type: "tool.running", tool: use.name, tier: tool.tier, summary: tool.describe(parsed.value) });
-    return toResult(await deps.executor.execute({ ...call, input: parsed.value }));
+  if (decision.kind === "allow" && !confirmTwice) {
+    emit({ type: "tool.running", tool: use.name, tier: tool.tier, summary });
+    return toResult(await deps.executor.execute(call));
   }
 
   // Needs approval: freeze the exact payload, show it, and only run what was approved.
@@ -200,40 +221,56 @@ async function handleToolUse(
     toolUseId: use.id,
     tool: use.name,
     tier: tool.tier,
-    input: parsed.value,
-    summary: tool.describe(parsed.value),
+    input,
+    summary,
+    display: parsed.value,
+    protectedKinds,
   });
   deps.audit.append("approval.proposed", taskId, {
     proposalId: proposal.id,
     tool: proposal.tool,
-    summary: proposal.summary,
+    summary: vault.protect(summary).text,
     payloadHash: proposal.payloadHash,
     input: proposal.input,
+    protectedKinds,
   });
+
+  const declined = (stage: 1 | 2, feedback?: string) => {
+    deps.audit.append("approval.rejected", taskId, { proposalId: proposal.id, stage, feedback: feedback ?? null });
+    emit({ type: "approval.decided", tool: use.name, decision: "reject" });
+    const note = feedback
+      ? ` The user's feedback: ${JSON.stringify(vault.protect(feedback).text)}`
+      : stage === 2
+        ? " They chose not to share the protected details. Don't retry unless they ask."
+        : " No feedback given; ask the user what they would like instead.";
+    return result(`The user declined this action, so it was not executed.${note}`);
+  };
+
   deps.tasks.setStatus(taskId, "awaiting_approval");
-  const verdict = await deps.approver.review(proposal, tool, signal);
+  const first = await deps.approver.review(proposal, tool, signal);
+  if (first.decision === "reject") {
+    deps.tasks.setStatus(taskId, "running");
+    return declined(1, first.feedback);
+  }
+  if (confirmTwice) {
+    deps.audit.append("approval.granted", taskId, { proposalId: proposal.id, stage: 1 });
+    const second = await deps.approver.review(deps.authority.confirmAgain(proposal), tool, signal);
+    if (second.decision === "reject") {
+      deps.tasks.setStatus(taskId, "running");
+      return declined(2, second.feedback);
+    }
+  }
   deps.tasks.setStatus(taskId, "running");
 
-  if (verdict.decision === "reject") {
-    deps.audit.append("approval.rejected", taskId, {
-      proposalId: proposal.id,
-      feedback: verdict.feedback ?? null,
-    });
-    emit({ type: "approval.decided", tool: use.name, decision: "reject" });
-    const feedback = verdict.feedback
-      ? ` The user's feedback: ${JSON.stringify(verdict.feedback)}`
-      : " No feedback given; ask the user what they would like instead.";
-    return result(`The user declined this action, so it was not executed.${feedback}`);
-  }
-
-  const token = deps.authority.issue(proposal);
+  const token = deps.authority.issue(proposal, confirmTwice ? 2 : 1);
   deps.audit.append("approval.granted", taskId, {
     proposalId: proposal.id,
     payloadHash: proposal.payloadHash,
+    confirmations: token.confirmations,
     expiresAt: token.expiresAt,
   });
   emit({ type: "approval.decided", tool: use.name, decision: "approve" });
-  emit({ type: "tool.running", tool: use.name, tier: tool.tier, summary: proposal.summary });
+  emit({ type: "tool.running", tool: use.name, tier: tool.tier, summary });
   return toResult(await deps.executor.execute({ ...call, input: proposal.input }, token));
 
   function toResult(exec: Awaited<ReturnType<GuardedExecutor["execute"]>>) {
@@ -243,5 +280,23 @@ async function handleToolUse(
     }
     emit({ type: "tool.result", tool: use.name, ok: true, text: exec.output });
     return result(tool.untrustedOutput ? wrapUntrusted(use.name, exec.output) : exec.output);
+  }
+}
+
+/** Fill protected values back in for display on this Mac. */
+function revealEvent(vault: PrivacyVault, e: AgentEvent): AgentEvent {
+  switch (e.type) {
+    case "assistant.delta":
+    case "assistant.text":
+    case "tool.result":
+      return { ...e, text: vault.reveal(e.text) };
+    case "task.finished":
+      return { ...e, text: vault.reveal(e.text) };
+    case "tool.running":
+      return { ...e, summary: vault.reveal(e.summary) };
+    case "tool.blocked":
+      return { ...e, reason: vault.reveal(e.reason) };
+    default:
+      return e;
   }
 }

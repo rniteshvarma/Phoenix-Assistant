@@ -5,6 +5,7 @@ import { AuditLog } from "./audit/log.ts";
 import { ensureDirs, type PhoenixConfig } from "./config.ts";
 import { DeviceHub } from "./gateway/devices.ts";
 import { ApprovalAuthority } from "./policy/approvals.ts";
+import { PrivacyVault } from "./privacy/vault.ts";
 import { PolicyEngine } from "./policy/engine.ts";
 import { GuardedExecutor } from "./policy/executor.ts";
 import { loadKeys } from "./security/keys.ts";
@@ -41,6 +42,7 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
   const sessions = new SessionStore(db, keys.dataKey);
   const memory = new MemoryStore(db, keys.dataKey);
   const devices = new DeviceHub();
+  const vault = new PrivacyVault(db, keys.dataKey, keys.privacyKey);
   const registry = new ToolRegistry(opts.tools ?? BUILTIN_TOOLS);
   const policy = new PolicyEngine(registry);
   const authority = new ApprovalAuthority(keys.hmacKey, { ttlMs: cfg.approvalTtlMs });
@@ -51,6 +53,7 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
     audit,
     cfg,
     services: { memory, devices },
+    vault,
   });
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -61,6 +64,7 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
     sessions,
     memory,
     devices,
+    vault,
     registry,
     policy,
     authority,
@@ -69,16 +73,19 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
     /** Handle one user request, continuing a conversation when `sessionId` is given. */
     async ask(request: string, o: AskOptions): Promise<AskResult> {
       const session = sessions.resumeOrCreate(o.sessionId);
+      // Privacy Shield: sensitive values become placeholders before anything reaches the model.
       const context = renderContext({
         now: o.now ?? new Date(),
         timeZone,
         memories: memory.list(),
         channel: o.channel ?? "text",
       });
+      const safeRequest = vault.protect(request).text;
+      const safeContext = vault.protect(context).text;
       const outcome = await runTask(
-        { model: o.model, approver: o.approver, registry, policy, authority, executor, audit, tasks, maxSteps: cfg.maxSteps },
-        request,
-        { onEvent: o.onEvent, signal: o.signal, history: session.messages, context },
+        { model: o.model, approver: o.approver, registry, policy, authority, executor, audit, tasks, vault, maxSteps: cfg.maxSteps },
+        safeRequest,
+        { onEvent: o.onEvent, signal: o.signal, history: session.messages, context: safeContext },
       );
       sessions.save(session.id, outcome.messages, session.turns + 1);
       return { ...outcome, sessionId: session.id };

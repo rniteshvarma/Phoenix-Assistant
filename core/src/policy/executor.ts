@@ -3,6 +3,7 @@ import type { PhoenixConfig } from "../config.ts";
 import { sha256Hex } from "../security/canonical.ts";
 import type { ToolRegistry, ToolServices } from "../tools/types.ts";
 import type { ApprovalAuthority, ApprovalToken } from "./approvals.ts";
+import type { PrivacyVault } from "../privacy/vault.ts";
 import type { PolicyEngine } from "./engine.ts";
 
 export interface ToolCall {
@@ -25,6 +26,7 @@ export class GuardedExecutor {
   #audit: AuditLog;
   #cfg: PhoenixConfig;
   #services: ToolServices;
+  #vault: PrivacyVault;
 
   constructor(deps: {
     registry: ToolRegistry;
@@ -33,6 +35,7 @@ export class GuardedExecutor {
     audit: AuditLog;
     cfg: PhoenixConfig;
     services: ToolServices;
+    vault: PrivacyVault;
   }) {
     this.#registry = deps.registry;
     this.#policy = deps.policy;
@@ -40,34 +43,50 @@ export class GuardedExecutor {
     this.#audit = deps.audit;
     this.#cfg = deps.cfg;
     this.#services = deps.services;
+    this.#vault = deps.vault;
   }
 
+  /**
+   * Run one tool call. Inputs arrive with protected values as placeholders; they are filled in
+   * here, on this Mac, just before the tool runs, and the output is protected again before it
+   * goes back to the model. Protected values may only leave the Mac with a twice-confirmed approval.
+   */
   async execute(call: ToolCall, token?: ApprovalToken): Promise<ExecResult> {
+    const vault = this.#vault;
+    const fail = (error: string): ExecResult => ({ ok: false, error: vault.protect(error).text });
+
     const decision = this.#policy.decide(call.name);
     if (decision.kind === "block") {
       this.#audit.append("tool.failed", call.taskId, { tool: call.name, reason: decision.reason });
-      return { ok: false, error: `Blocked by Phoenix policy: ${decision.reason}.` };
+      return fail(`Blocked by Phoenix policy: ${decision.reason}.`);
     }
+    const tool = this.#registry.get(call.name)!;
+    const protectedKinds = tool.leavesDevice ? vault.kindsIn(call.input) : [];
+    const needsTwo = protectedKinds.length > 0;
 
-    if (decision.kind === "needs_approval") {
+    if (decision.kind === "needs_approval" || needsTwo) {
       const verdict = token
-        ? this.#authority.verify(token, { tool: call.name, taskId: call.taskId, input: call.input })
-        : ({ ok: false, reason: "no approval token" } as const);
+        ? this.#authority.verify(
+            token,
+            { tool: call.name, taskId: call.taskId, input: call.input },
+            { minConfirmations: needsTwo ? 2 : 1 },
+          )
+        : ({ ok: false, reason: needsTwo ? "protected data needs the user to confirm twice" : "no approval token" } as const);
       if (!verdict.ok) {
         this.#audit.append("tool.token_rejected", call.taskId, {
           tool: call.name,
           toolUseId: call.toolUseId,
           reason: verdict.reason,
+          protectedKinds,
         });
-        return { ok: false, error: `Not executed: ${verdict.reason}.` };
+        return fail(`Not executed: ${verdict.reason}.`);
       }
     }
 
-    const tool = this.#registry.get(call.name)!;
-    const parsed = tool.parse(call.input);
+    const parsed = tool.parse(vault.revealDeep(call.input));
     if (!parsed.ok) {
       this.#audit.append("tool.failed", call.taskId, { tool: call.name, reason: "invalid input" });
-      return { ok: false, error: `Invalid input for ${call.name}:\n${parsed.error}` };
+      return fail(`Invalid input for ${call.name}:\n${parsed.error}`);
     }
 
     try {
@@ -76,18 +95,20 @@ export class GuardedExecutor {
         cfg: this.#cfg,
         taskId: call.taskId,
       });
+      const safe = vault.protect(output).text;
       this.#audit.append("tool.executed", call.taskId, {
         tool: call.name,
         toolUseId: call.toolUseId,
         tier: tool.tier,
-        approved: decision.kind === "needs_approval",
-        outputSha256: sha256Hex(output),
+        approved: decision.kind === "needs_approval" || needsTwo,
+        protectedKindsSent: protectedKinds,
+        outputSha256: sha256Hex(safe),
       });
-      return { ok: true, output };
+      return { ok: true, output: safe };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.#audit.append("tool.failed", call.taskId, { tool: call.name, reason: message });
-      return { ok: false, error: `${call.name} failed: ${message}` };
+      this.#audit.append("tool.failed", call.taskId, { tool: call.name, reason: vault.protect(message).text });
+      return fail(`${call.name} failed: ${message}`);
     }
   }
 }

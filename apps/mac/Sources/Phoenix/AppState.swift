@@ -32,6 +32,10 @@ struct ApprovalCard: Identifiable, Equatable {
     let summary: String
     let payload: String
     let payloadHash: String
+    /// 1 = first approval; 2 = "Are you sure?" (protected data would leave the Mac).
+    var stage: Int = 1
+    /// Protected data in this action, e.g. ["PAN", "email address"].
+    var protectedKinds: [String] = []
 }
 
 /// Everything the Summon Bar shows. Mutated only on the main thread.

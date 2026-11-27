@@ -140,7 +140,10 @@ final class PhoenixController {
     func approve() {
         guard let card = state.approval else { return }
         Task { @MainActor in
-            let ok = await Auth.confirm("approve: \(card.summary)")
+            let reason = card.stage == 2
+                ? "confirm again: share your \(card.protectedKinds.joined(separator: ", ")) — \(card.summary)"
+                : "approve: \(card.summary)"
+            let ok = await Auth.confirm(reason)
             guard state.approval?.id == card.id else { return }
             if ok {
                 core.send(["type": "approval", "proposalId": card.id, "decision": "approve"])
@@ -247,15 +250,17 @@ final class PhoenixController {
                 tierLabel: p["tierLabel"] as? String ?? "",
                 summary: p["summary"] as? String ?? "",
                 payload: payload,
-                payloadHash: p["payloadHash"] as? String ?? ""
+                payloadHash: p["payloadHash"] as? String ?? "",
+                stage: p["stage"] as? Int ?? 1,
+                protectedKinds: p["protectedKinds"] as? [String] ?? []
             )
             state.changingApproval = false
             state.approvalFeedback = ""
             state.phase = .waitingForYou
             show(focus: true)
-            if requestChannel == "voice" {
+            if requestChannel == "voice", let card = state.approval {
                 speaker.flush()
-                speaker.say("This needs your OK.")
+                speaker.say(card.stage == 2 ? "Are you sure? This shares your \(card.protectedKinds.joined(separator: " and "))." : "This needs your OK.")
             }
         case "tool.call":
             runToolCall(m)

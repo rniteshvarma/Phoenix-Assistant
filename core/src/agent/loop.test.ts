@@ -23,15 +23,16 @@ const outboxCount = (dir: string) => fs.readdirSync(dir).length;
 test("exit test: note saves automatically, email waits for approval and is sent once approved", async () => {
   const { phoenix, cfg, done } = setup();
   try {
-    const approver = new FakeApprover([{ decision: "approve" }]);
+    const approver = new FakeApprover([{ decision: "approve" }, { decision: "approve" }]);
     const outcome = await phoenix.ask("draft a note to myself and save it", {
       model: new ScriptedModel(demoScript("draft a note to myself and save it")),
       approver,
     });
 
     assert.equal(outcome.status, "completed");
-    assert.equal(approver.seen.length, 1, "only the email needed approval");
-    assert.equal(approver.seen[0]!.tool, "outbox_send");
+    // Only the email needed approval — twice, because it sends an email address off the Mac.
+    assert.deepEqual(approver.seen.map((p) => [p.tool, p.stage]), [["outbox_send", 1], ["outbox_send", 2]]);
+    assert.deepEqual(approver.seen[0]!.protectedKinds, ["EMAIL"]);
     assert.equal(fs.readdirSync(cfg.notesDir).length, 1);
     assert.equal(outboxCount(cfg.outboxDir), 1);
 
@@ -67,6 +68,7 @@ test("'change' feedback reaches the model, which can propose a revised payload",
     const approver = new FakeApprover([
       { decision: "reject", feedback: "make it warmer" },
       { decision: "approve" },
+      { decision: "approve" },
     ]);
     const outcome = await phoenix.ask("reply to Rahul", {
       model: new ScriptedModel([
@@ -81,7 +83,7 @@ test("'change' feedback reaches the model, which can propose a revised payload",
     });
     assert.equal(outcome.status, "completed");
     assert.match(feedbackSeen, /make it warmer/);
-    assert.equal(approver.seen.length, 2);
+    assert.equal(approver.seen.length, 3, "revised draft: approve + are-you-sure");
     const [sent] = fs.readdirSync(cfg.outboxDir);
     const body = JSON.parse(fs.readFileSync(`${cfg.outboxDir}/${sent}`, "utf8")).body;
     assert.equal(body, "Thanks so much, Rahul!");

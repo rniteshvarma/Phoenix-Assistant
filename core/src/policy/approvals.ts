@@ -13,6 +13,12 @@ export interface ActionProposal {
   readonly payloadHash: string;
   readonly summary: string;
   readonly createdAt: number;
+  /** The payload with protected values filled in, for showing to the user on this Mac only. */
+  readonly display: unknown;
+  /** Kinds of protected data (EMAIL, PAN, …) this action would send off the Mac. */
+  readonly protectedKinds: readonly string[];
+  /** 1 = first approval; 2 = "Are you sure?" (required when protected data would leave the Mac). */
+  readonly stage: 1 | 2;
 }
 
 /** Proof that the user approved one specific payload. Single use, short-lived. */
@@ -22,6 +28,8 @@ export interface ApprovalToken {
   readonly tool: string;
   readonly payloadHash: string;
   readonly expiresAt: number;
+  /** How many times the user confirmed (2 for protected data leaving the Mac). */
+  readonly confirmations: number;
   readonly sig: string;
 }
 
@@ -50,6 +58,8 @@ export class ApprovalAuthority {
     tier: Tier;
     input: unknown;
     summary: string;
+    display?: unknown;
+    protectedKinds?: readonly string[];
   }): ActionProposal {
     const input = deepFreeze(structuredClone(args.input));
     return Object.freeze({
@@ -62,10 +72,18 @@ export class ApprovalAuthority {
       payloadHash: hashPayload(input),
       summary: args.summary,
       createdAt: this.#now(),
+      display: deepFreeze(structuredClone(args.display ?? input)),
+      protectedKinds: Object.freeze([...(args.protectedKinds ?? [])]),
+      stage: 1,
     });
   }
 
-  issue(proposal: ActionProposal): ApprovalToken {
+  /** The same proposal, asked again: "Are you sure?" */
+  confirmAgain(proposal: ActionProposal): ActionProposal {
+    return Object.freeze({ ...proposal, stage: 2 });
+  }
+
+  issue(proposal: ActionProposal, confirmations = 1): ApprovalToken {
     if (hashPayload(proposal.input) !== proposal.payloadHash) {
       throw new Error("Proposal payload changed after it was shown to the user");
     }
@@ -75,6 +93,7 @@ export class ApprovalAuthority {
       tool: proposal.tool,
       payloadHash: proposal.payloadHash,
       expiresAt: this.#now() + this.#ttlMs,
+      confirmations,
     };
     return Object.freeze({ ...unsigned, sig: this.#sign(unsigned) });
   }
@@ -83,6 +102,7 @@ export class ApprovalAuthority {
   verify(
     token: ApprovalToken,
     call: { tool: string; taskId: string; input: unknown },
+    opts: { minConfirmations?: number } = {},
   ): VerifyResult {
     const { sig, ...unsigned } = token;
     if (!this.#sigMatches(sig, this.#sign(unsigned))) {
@@ -94,6 +114,9 @@ export class ApprovalAuthority {
     if (token.taskId !== call.taskId) return { ok: false, reason: "approval is for a different task" };
     if (hashPayload(call.input) !== token.payloadHash) {
       return { ok: false, reason: "payload differs from what the user approved" };
+    }
+    if (token.confirmations < (opts.minConfirmations ?? 1)) {
+      return { ok: false, reason: "protected data needs the user to confirm twice" };
     }
     this.#used.add(token.proposalId);
     return { ok: true };

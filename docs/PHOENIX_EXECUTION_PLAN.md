@@ -146,6 +146,16 @@ The same pattern applies to WhatsApp/iMessage replies, social posts, video uploa
 
 ---
 
+### 5.1 Privacy Shield (decided 2026-11-27)
+
+The owner's rule: **sensitive data never leaves the Mac**, and any use of it needs approval **twice**.
+
+- **What counts:** Aadhaar, PAN, passport, driving licence, bank account + IFSC, card numbers + CVV, UPI IDs, email addresses, phone numbers, passwords / PINs / OTPs / login IDs, API keys and private keys — and anything industry standards treat as sensitive. This applies to content found inside emails and Google Drive too.
+- **How:** every text crossing to a cloud service (Claude, a cloud voice, web search) is scanned on the Mac (`core/src/privacy/detect.ts`, with Luhn/Verhoeff checks). Each value is swapped for a placeholder (`[[PAN_1]]`) and kept in an encrypted local vault (`core/src/privacy/vault.ts`). The model only ever sees placeholders.
+- **Real values** are filled back in only on the Mac: on screen, in the local voice, and when a local tool runs (e.g. saving a note).
+- **Leaving the Mac:** a tool marked `leavesDevice` (email, forms, bookings) that would carry a protected value needs an approval **and** a second "Are you sure?" confirmation (Touch ID each time). The executor refuses a token with fewer than two confirmations.
+- **Still to do:** on-device OCR (Apple Vision) so scanned IDs in images/PDFs are recognised; whole-document "confidential" classification for Drive files; optional local model for summarising confidential documents without the cloud.
+
 ## 6. UI / UX — "Ember" design language
 
 Inspired by the Ghost overlay you shared (dark glass panel, waveform, serif for the human, mono for the agent) — but with Phoenix's own identity.
@@ -412,8 +422,8 @@ Levers: prompt caching on the stable system prompt + tool list, Haiku for routin
 
 ## 15. Decisions you should confirm
 
-1. **Primary language of the Core:** TypeScript (recommended) vs Python.
-2. **Email provider:** Gmail personal, Google Workspace, or Outlook/Microsoft 365?
+1. **Primary language of the Core:** TypeScript ✅
+2. **Email provider:** personal Gmail + work Outlook (Microsoft 365) ✅
 3. **Nest hardware:** laptop now, Mac mini later? (Recommended.)
-4. **Never-cloud categories:** which data should never leave your devices (e.g. finance docs, health, ID documents)?
+4. **Never-cloud categories:** all sensitive data (IDs, financial, credentials, contact details) — see §5.1 ✅
 5. **First 10 errands** you personally want Phoenix to handle — these become the eval set and drive priorities.

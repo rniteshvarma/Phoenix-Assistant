@@ -291,6 +291,51 @@ struct ApprovalCardView: View {
     @ObservedObject var state: AppState
 
     var body: some View {
+        if card.stage == 2 { areYouSure } else { firstApproval }
+    }
+
+    /// Second confirmation before protected data leaves the Mac.
+    private var areYouSure: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "lock.shield.fill").foregroundStyle(Ember.red)
+                Text("ARE YOU SURE?")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .tracking(1.6)
+                    .foregroundStyle(Ember.red)
+                Text("SECOND CONFIRMATION")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Ember.dim)
+                Spacer()
+            }
+            Text("This sends your \(card.protectedKinds.joined(separator: ", ")) off this Mac.")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Ember.text)
+            Text(card.summary)
+                .font(.system(size: 12.5))
+                .foregroundStyle(Ember.text.opacity(0.8))
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Button(action: { controller.approve() }) {
+                    Label("Yes, I'm sure", systemImage: "touchid")
+                        .font(.system(size: 13, weight: .semibold))
+                        .padding(.horizontal, 14).padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(Ember.red))
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+                Button("No, don't share") { controller.reject() }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Ember.text)
+                Spacer()
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Ember.red.opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Ember.red.opacity(0.7), lineWidth: 1))
+    }
+
+    private var firstApproval: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("◆ NEEDS YOUR OK")
@@ -306,6 +351,12 @@ struct ApprovalCardView: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Ember.text)
                 .fixedSize(horizontal: false, vertical: true)
+            if !card.protectedKinds.isEmpty {
+                Label("Contains protected data: \(card.protectedKinds.joined(separator: ", ")) — you'll be asked twice",
+                      systemImage: "lock.fill")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(Ember.red)
+            }
             ScrollView {
                 Text(card.payload)
                     .font(.system(size: 11.5, design: .monospaced))

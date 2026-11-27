@@ -2,6 +2,7 @@ import type { Interface as ReadlineInterface } from "node:readline";
 import type { ApprovalDecision, Approver } from "../agent/loop.ts";
 import type { ActionProposal } from "../policy/approvals.ts";
 import { TIER_LABEL } from "../policy/tiers.ts";
+import { KIND_LABEL, type Kind } from "../privacy/detect.ts";
 import type { Tool } from "../tools/types.ts";
 import { c } from "./style.ts";
 
@@ -59,7 +60,31 @@ export class TerminalApprover implements Approver {
 
   async review(proposal: ActionProposal, _tool: Tool, signal?: AbortSignal): Promise<ApprovalDecision> {
     const line = c.amber("─".repeat(64));
-    const payload = JSON.stringify(proposal.input, null, 2)
+    const kinds = proposal.protectedKinds.map((k) => KIND_LABEL[k as Kind] ?? k);
+
+    if (proposal.stage === 2) {
+      process.stdout.write(
+        [
+          "",
+          `  ${c.red("━".repeat(64))}`,
+          `  ${c.red("◆ ARE YOU SURE?")}   ${c.dim("second confirmation")}`,
+          `  ${c.red("━".repeat(64))}`,
+          `  This sends your ${c.bold(kinds.join(", "))} off this Mac:`,
+          `  ${c.bold(proposal.summary)}`,
+          `  ${c.red("━".repeat(64))}`,
+          "",
+        ].join("\n"),
+      );
+      for (;;) {
+        const answer = await this.#ask(`  ${c.red("[y]")}es, I'm sure   ${c.amber("[n]")}o › `, signal);
+        if (answer === null) return { decision: "reject" };
+        const choice = answer.trim().toLowerCase().replace(/^\[(.*)\]$/, "$1");
+        if (choice === "y" || choice === "yes") return { decision: "approve" };
+        if (choice === "n" || choice === "no") return { decision: "reject" };
+      }
+    }
+
+    const payload = JSON.stringify(proposal.display, null, 2)
       .split("\n")
       .map((l) => `  ${c.dim("│")} ${l}`)
       .join("\n");
@@ -71,6 +96,7 @@ export class TerminalApprover implements Approver {
         `  ${c.amber("◆ NEEDS YOUR OK")}   ${c.dim(TIER_LABEL[proposal.tier])}`,
         `  ${line}`,
         `  ${c.bold(proposal.summary)}`,
+        ...(kinds.length > 0 ? [`  ${c.red("🔒 Contains protected data:")} ${kinds.join(", ")} ${c.dim("(you'll be asked twice)")}`] : []),
         "",
         payload,
         "",

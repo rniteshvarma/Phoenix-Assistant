@@ -9,6 +9,7 @@ import { ToolRegistry } from "../tools/types.ts";
 import { ensureDirs } from "../config.ts";
 import { DeviceHub } from "../gateway/devices.ts";
 import { MemoryStore } from "../store/memory.ts";
+import { PrivacyVault } from "../privacy/vault.ts";
 import { ApprovalAuthority } from "./approvals.ts";
 import { PolicyEngine } from "./engine.ts";
 import { GuardedExecutor } from "./executor.ts";
@@ -106,7 +107,8 @@ test("executor refuses gated tools without a valid token, and runs them with one
     const policy = new PolicyEngine(registry);
     const authority = authorityAt({ now: Date.now() });
     const services = { memory: new MemoryStore(db, randomBytes(32)), devices: new DeviceHub() };
-    const executor = new GuardedExecutor({ registry, policy, authority, audit, cfg, services });
+    const vault = new PrivacyVault(db, randomBytes(32), randomBytes(32));
+    const executor = new GuardedExecutor({ registry, policy, authority, audit, cfg, services, vault });
     const call = { taskId: "task-1", toolUseId: "tu-1", name: "outbox_send", input: email };
 
     const noToken = await executor.execute(call);
@@ -116,11 +118,16 @@ test("executor refuses gated tools without a valid token, and runs them with one
     const tampered = await executor.execute({ ...call, input: { ...email, body: "Wire ₹50,000 now" } }, token);
     assert.equal(tampered.ok, false);
 
-    const good = await executor.execute(call, authority.issue(proposeEmail(authority)));
+    // The email address is protected data leaving the Mac: one confirmation isn't enough.
+    const once = await executor.execute(call, authority.issue(proposeEmail(authority), 1));
+    assert.equal(once.ok, false);
+    assert.match(!once.ok ? once.error : "", /confirm twice/);
+
+    const good = await executor.execute(call, authority.issue(proposeEmail(authority), 2));
     assert.equal(good.ok, true);
 
     const types = audit.list().map((e) => e.type);
-    assert.deepEqual(types, ["tool.token_rejected", "tool.token_rejected", "tool.executed"]);
+    assert.deepEqual(types, ["tool.token_rejected", "tool.token_rejected", "tool.token_rejected", "tool.executed"]);
     db.close();
   } finally {
     cleanup();

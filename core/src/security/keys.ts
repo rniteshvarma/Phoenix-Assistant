@@ -12,6 +12,8 @@ export interface PhoenixKeys {
   hmacKey: Buffer;
   /** Encrypts data at rest (audit entries, task transcripts). */
   dataKey: Buffer;
+  /** Fingerprints protected values in the Privacy Shield vault. */
+  privacyKey: Buffer;
 }
 
 /**
@@ -24,6 +26,7 @@ export function loadKeys(cfg: PhoenixConfig): PhoenixKeys {
   return {
     hmacKey: derive(master, "phoenix/approval-hmac/v1"),
     dataKey: derive(master, "phoenix/data-at-rest/v1"),
+    privacyKey: derive(master, "phoenix/privacy-fingerprint/v1"),
   };
 }
 

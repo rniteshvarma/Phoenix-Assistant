@@ -6,6 +6,7 @@ import type { ApprovalDecision, Approver } from "../agent/loop.ts";
 import type { ModelClient } from "../agent/model.ts";
 import type { Phoenix } from "../phoenix.ts";
 import { TIER_LABEL } from "../policy/tiers.ts";
+import { KIND_LABEL, type Kind } from "../privacy/detect.ts";
 import type { SpeechSynth } from "../voice/tts.ts";
 import { Inbound } from "./protocol.ts";
 import { tokenMatches } from "./token.ts";
@@ -87,7 +88,8 @@ export function startGateway(phoenix: Phoenix, opts: GatewayOptions): Promise<Ga
           const speech = opts.speech;
           if (!speech) return send({ type: "speech.error", id: msg.id, message: "no Phoenix voice configured" });
           speech
-            .synthesize(msg.text, speechAbort.signal)
+            // A cloud voice never receives protected values; the local voice runs on this Mac.
+            .synthesize(speech.kind === "cloud" ? phoenix.vault.speakable(msg.text) : msg.text, speechAbort.signal)
             .then(({ audio, mime }) => send({ type: "speech", id: msg.id, mime, audio: audio.toString("base64") }))
             .catch((err) => {
               if (!speechAbort.signal.aborted) {
@@ -117,8 +119,10 @@ export function startGateway(phoenix: Phoenix, opts: GatewayOptions): Promise<Ga
                     tier: proposal.tier,
                     tierLabel: TIER_LABEL[proposal.tier],
                     summary: proposal.summary,
-                    input: proposal.input,
+                    input: proposal.display,
                     payloadHash: proposal.payloadHash,
+                    stage: proposal.stage,
+                    protectedKinds: proposal.protectedKinds.map((k) => KIND_LABEL[k as Kind] ?? k),
                   },
                 });
                 signal?.addEventListener(

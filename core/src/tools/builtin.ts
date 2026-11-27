@@ -87,6 +87,7 @@ export const notesRead = defineTool({
 export const outboxSend = defineTool({
   name: "outbox_send",
   tier: Tier.Act,
+  leavesDevice: true,
   description:
     "Send an email on the user's behalf. Always requires the user's approval. " +
     "In this early build it is SIMULATED: the email is written to the local outbox folder, not delivered.",

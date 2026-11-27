@@ -41,6 +41,10 @@ npm run phoenix -- key remove     # delete it
 
 Phoenix reads the key from the macOS Keychain itself, so every new terminal just works. When a key expires or is revoked, Phoenix says so and `key set` replaces it. An `ANTHROPIC_API_KEY` set in a terminal still takes priority for that terminal.
 
+### Privacy Shield
+
+Sensitive data never leaves your Mac. Before anything is sent to Claude (or a cloud voice), Phoenix scans it **on the Mac** and swaps IDs (Aadhaar, PAN, passport, driving licence), bank/card/UPI details, email addresses, phone numbers, passwords, PINs, OTPs and keys for placeholders like `[[PAN_1]]`; the real values stay in an encrypted vault on the Mac. You still see real values on screen. Any action that would send protected data off the Mac asks you **twice** ("Are you sure?"), with Touch ID. Code: `core/src/privacy/`.
+
 ### Run it every day (starts automatically)
 
 ```bash

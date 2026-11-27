@@ -66,7 +66,9 @@ test("remember → recall across a new conversation, and secrets are refused", a
       ]),
       approver: new FakeApprover([]),
     });
-    assert.match(firstUserMessage, /\[#1\] User's email is me@example.com/);
+    // The model sees a placeholder, never the address itself.
+    assert.match(firstUserMessage, /\[#1\] User's email is \[\[EMAIL_\d+\]\]/);
+    assert.ok(!firstUserMessage.includes("me@example.com"));
     assert.match(firstUserMessage, /what's my email\?$/);
   } finally {
     done();

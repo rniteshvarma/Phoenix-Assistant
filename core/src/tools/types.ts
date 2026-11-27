@@ -26,6 +26,9 @@ export interface ToolSpec<S extends z.ZodType> {
   describe: (input: z.infer<S>) => string;
   /** True when the output contains outside content (notes, emails, web pages). */
   untrustedOutput?: boolean;
+  /** True when running it sends its input off this Mac (email, forms, bookings…). Protected
+   *  values in such an input need the user's approval twice. */
+  leavesDevice?: boolean;
   run: (input: z.infer<S>, ctx: ToolContext) => Promise<string>;
 }
 
@@ -35,6 +38,7 @@ export interface Tool {
   description: string;
   tier: Tier;
   untrustedOutput: boolean;
+  leavesDevice: boolean;
   parse: (input: unknown) => { ok: true; value: unknown } | { ok: false; error: string };
   describe: (input: unknown) => string;
   run: (input: unknown, ctx: ToolContext) => Promise<string>;
@@ -56,6 +60,7 @@ export function defineTool<S extends z.ZodType>(spec: ToolSpec<S>): Tool {
     description: spec.description,
     tier: spec.tier,
     untrustedOutput: spec.untrustedOutput ?? false,
+    leavesDevice: spec.leavesDevice ?? false,
     parse,
     describe: (input) => spec.describe(spec.schema.parse(input)),
     run: (input, ctx) => spec.run(spec.schema.parse(input), ctx),
