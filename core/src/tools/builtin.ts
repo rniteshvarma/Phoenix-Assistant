@@ -6,7 +6,7 @@ import { calendarEvents } from "./calendar.ts";
 import { documentRead, documentsList } from "./documents.ts";
 import { MAC_TOOLS } from "./mac.ts";
 import { screenAct } from "./screen.ts";
-import { memoryForget, memoryRemember } from "./memory.ts";
+import { memoryForget, memoryRemember, memorySearch } from "./memory.ts";
 import { defineTool, type Tool } from "./types.ts";
 
 /** Resolve `name` inside `dir`, refusing anything that escapes it (`..`, absolute paths). */
@@ -100,6 +100,7 @@ export const outboxSend = defineTool({
     body: z.string().min(1).max(20_000).describe("Plain-text email body"),
   }),
   describe: (i) => `Send email to ${i.to}: "${i.subject}"`,
+  styleSample: (i) => ({ subject: i.to, text: i.body }),
   async run(i, ctx) {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const file = await uniquePath(ctx.cfg.outboxDir, `${stamp}-${slugify(i.subject)}`, ".json");
@@ -116,6 +117,7 @@ export const BUILTIN_TOOLS: Tool[] = [
   notesRead,
   outboxSend,
   memoryRemember,
+  memorySearch,
   memoryForget,
   calendarEvents,
   documentsList,

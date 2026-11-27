@@ -1,9 +1,9 @@
-import type { MemoryItem } from "../store/memory.ts";
 
 export interface TurnContext {
   now: Date;
   timeZone: string;
-  memories: MemoryItem[];
+  /** Memories picked for this request (see memory/recall.ts); the profile goes separately. */
+  recalled?: string[];
   /** How the user is talking to Phoenix right now. */
   channel: "voice" | "text";
 }
@@ -30,10 +30,7 @@ export function renderContext(ctx: TurnContext): string {
     `Current local time: ${when} (${ctx.timeZone})`,
     `Channel: ${ctx.channel}${ctx.channel === "voice" ? " (your reply will be spoken aloud)" : ""}`,
   ];
-  if (ctx.memories.length > 0) {
-    lines.push("Things the user asked you to remember:");
-    for (const m of ctx.memories) lines.push(`[#${m.id}] ${m.text}`);
-  }
+  if (ctx.recalled?.length) lines.push(...ctx.recalled);
   lines.push("</context>");
   return lines.join("\n");
 }

@@ -22,6 +22,12 @@ export const screenAct = defineTool({
     app: z.string().min(1).max(60).describe('App name, e.g. "WhatsApp", "Safari", "iPhone Mirroring"'),
     goal: z.string().min(3).max(1000).describe("What to do, in full, e.g. 'Send \"Running 10 min late\" to Ankit'"),
   }),
+  // The quoted message in a goal like: Send "Running late" to Ankit.
+  styleSample: (i) => {
+    const quoted = /["“]([^"”]{2,600})["”]/.exec(i.goal)?.[1];
+    const to = /\bto\s+([\p{L}][\p{L} .'-]{0,40}?)(?:\s+on\b|[.,]|$)/u.exec(i.goal)?.[1]?.trim();
+    return quoted ? { subject: to ? `${to} (${i.app})` : i.app, text: quoted } : null;
+  },
   describe: (i) => `Use ${i.app} on your screen: ${i.goal.length > 120 ? `${i.goal.slice(0, 117)}…` : i.goal}`,
   async run(i, ctx) {
     if (NEVER_APPS.test(i.app)) throw new Error(`Phoenix never operates ${i.app} (banking, payment, password or system app)`);

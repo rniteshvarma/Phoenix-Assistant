@@ -5,6 +5,7 @@ import type { PolicyEngine } from "../policy/engine.ts";
 import type { GuardedExecutor } from "../policy/executor.ts";
 import { Tier } from "../policy/tiers.ts";
 import type { TaskStore } from "../store/tasks.ts";
+import type { MemoryStore } from "../store/memory.ts";
 import type { Tool, ToolRegistry, ToolSession } from "../tools/types.ts";
 import { StreamRevealer, type PrivacyVault } from "../privacy/vault.ts";
 import type { ModelClient } from "./model.ts";
@@ -41,6 +42,8 @@ export interface AgentDeps {
   maxSteps: number;
   /** Privacy Shield: protected values are placeholders everywhere except on the user's screen. */
   vault: PrivacyVault;
+  /** For learning from the user's feedback on drafts. */
+  memory?: MemoryStore;
 }
 
 export interface TaskOutcome {
@@ -60,6 +63,8 @@ export interface RunOptions {
   context?: string;
   /** Only read-only tools may run (automatic briefings never change anything). */
   readOnly?: boolean;
+  /** The user's profile (from memory), sent in the cached part of the prompt. */
+  profile?: string;
 }
 
 type ToolUse = Anthropic.Beta.BetaToolUseBlockParam;
@@ -103,7 +108,7 @@ export async function runTask(
     for (let step = 0; step < deps.maxSteps; step += 1) {
       if (opts.signal?.aborted) return finish("cancelled", "Stopped by the user.");
 
-      const turn = await deps.model.next({ system: SYSTEM_PROMPT, messages, tools, onText });
+      const turn = await deps.model.next({ system: SYSTEM_PROMPT, profile: opts.profile, messages, tools, onText });
       const tail = revealer.flush();
       if (tail) show({ type: "assistant.delta", text: tail });
       const texts = turn.content.filter((b) => b.type === "text").map((b) => b.text);
@@ -277,6 +282,14 @@ async function handleToolUse(
   const declined = (stage: 1 | 2, feedback?: string) => {
     deps.audit.append("approval.rejected", taskId, { proposalId: proposal.id, stage, feedback: feedback ?? null });
     emit({ type: "approval.decided", tool: use.name, decision: "reject" });
+    // Feedback on a draft is the best lesson in how the user writes: keep it.
+    if (feedback && tool.styleSample && deps.memory) {
+      try {
+        deps.memory.add(`Feedback on a draft (${use.name}): ${vault.protect(feedback).text.slice(0, 300)}`, { kind: "style" });
+      } catch {
+        // memory full
+      }
+    }
     const note = feedback
       ? ` The user's feedback: ${JSON.stringify(vault.protect(feedback).text)}`
       : stage === 2

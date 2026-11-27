@@ -7,6 +7,8 @@ export interface ModelRequest {
   system: string;
   messages: Anthropic.Beta.BetaMessageParam[];
   tools: Anthropic.Beta.BetaTool[];
+  /** Who the user is: changes rarely, so it is cached right after the system prompt. */
+  profile?: string;
   /** Called with each text fragment as it streams, so the UI and voice can start early. */
   onText?: (delta: string) => void;
 }
@@ -51,7 +53,10 @@ export class ClaudeModel implements ModelClient {
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",
         // System prompt and tools are byte-stable, so this prefix stays cached.
-        system: [{ type: "text", text: req.system, cache_control: { type: "ephemeral" } }],
+        system: [
+          { type: "text", text: req.system, cache_control: { type: "ephemeral" } },
+          ...(req.profile ? [{ type: "text" as const, text: req.profile, cache_control: { type: "ephemeral" as const } }] : []),
+        ],
         tools: [...req.tools.map((t) => ({ ...t, eager_input_streaming: true })), WEB_SEARCH],
         messages: req.messages,
       });

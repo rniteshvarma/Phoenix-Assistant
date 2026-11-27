@@ -18,7 +18,30 @@ Full plan: [docs/PHOENIX_EXECUTION_PLAN.md](docs/PHOENIX_EXECUTION_PLAN.md)
 | Tools: `notes_save` (T1), `notes_list`/`notes_read` (T0), `outbox_send` (T2, simulated) | `core/src/tools/builtin.ts` |
 | CLI with terminal approval cards | `core/src/cli/` |
 
-## Status: Phase 4b — screen control (built, being tested)
+## Memory: Phoenix knows you (without re-reading everything)
+
+Everything is encrypted on this Mac. Only the **profile** goes with every request (in the cached part of
+the prompt); everything else is looked up on the Mac and only the few relevant items are sent.
+
+| Kind | What | Sent to Claude |
+|---|---|---|
+| Profile | Who you are: name, city, work, family, routine | Every request (cached, cheap) |
+| People / projects | "Ankit: colleague, WhatsApp, keep it short"; "Goa trip: Dec 12–15" | When you mention them (nicknames work: `Mom (Amma)`) |
+| Facts | Preferences and details | Only the best few matches for the request |
+| How you write | Style notes, recent messages you approved, your feedback on drafts | Only when Phoenix is writing for you |
+| Recent requests | One line per request and how it ended (last 300) | When you refer back ("yesterday", "follow up") |
+
+Phoenix learns as you talk (and says "I'll remember that"); it never stores passwords, PINs, OTPs, card or ID numbers.
+
+```bash
+npm run phoenix -- memory                                   # see everything, grouped
+npm run phoenix -- memory profile "I'm a product manager at Varsun"
+npm run phoenix -- memory person "Ankit" "Colleague; prefers short WhatsApp messages"
+npm run phoenix -- memory style "I write WhatsApp messages in lowercase, short, no full stops"
+npm run phoenix -- memory forget 12
+```
+
+## Status: Phase 4b — screen control ✅ (WhatsApp tested)
 
 Phoenix can operate one app on your screen (WhatsApp Desktop, Safari/Chrome, iPhone apps through
 **iPhone Mirroring**) using Claude's computer use, for the errands in [docs/ERRANDS.md](docs/ERRANDS.md).

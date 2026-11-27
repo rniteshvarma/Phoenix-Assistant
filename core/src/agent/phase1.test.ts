@@ -29,7 +29,7 @@ test("context block carries local time, channel and remembered facts", () => {
     now: new Date("2026-11-26T06:00:00Z"),
     timeZone: "Asia/Kolkata",
     channel: "voice",
-    memories: [{ id: 3, text: "User lives in Bengaluru", createdAt: 0 }],
+    recalled: ["Possibly relevant memories:", "  [#3] User lives in Bengaluru"],
   });
   assert.match(text, /Thursday, 26 November 2026/);
   assert.match(text, /11:30/);
@@ -51,7 +51,7 @@ test("remember → recall across a new conversation, and secrets are refused", a
     });
     assert.match(refusal, /card number/);
     assert.deepEqual(
-      phoenix.memory.list().map((m) => m.text),
+      phoenix.memory.list().filter((m) => m.kind !== "episode").map((m) => m.text),
       ["User's email is me@example.com"],
     );
 

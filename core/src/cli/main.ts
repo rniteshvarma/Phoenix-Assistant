@@ -19,6 +19,7 @@ import path from "node:path";
 import { KIND_LABEL } from "../privacy/detect.ts";
 import { scanDocument } from "../privacy/documents.ts";
 import { ProactiveScheduler } from "../proactive/scheduler.ts";
+import { sensitiveReason, type MemoryItem } from "../store/memory.ts";
 import { NEVER_APPS } from "../screen/session.ts";
 import { allowedScreenApps } from "../tools/screen.ts";
 import { minutesOf } from "../proactive/schedule.ts";
@@ -48,7 +49,10 @@ ${c.ember("Phoenix")} — CLI
   phoenix autostart [status]     Is the core running? Recent log lines
   phoenix autostart restart      Restart the background core (e.g. after replacing your key)
   phoenix scan <file>            Check a document/image on this Mac: is it confidential, what may be shared
-  phoenix memory                 Show what Phoenix remembers about you
+  phoenix memory                 Show what Phoenix remembers about you (profile, people, style…)
+  phoenix memory profile "…"     Add to your profile (who you are; sent with every request)
+  phoenix memory person "Name" "…"  Add something about a person (nicknames: "Mom (Amma)")
+  phoenix memory add|style "…"   Add a fact, or a note on how you write
   phoenix memory forget <n>      Delete remembered item #n
   phoenix audit [--limit N]      Show recent audit log entries (decrypted)
   phoenix audit verify           Check the audit log's hash chain
@@ -603,8 +607,9 @@ function render(e: AgentEvent): void {
 }
 
 function showMemory(phoenix: Phoenix, args: string[]): number {
-  if (args[0] === "forget") {
-    const id = Number(args[1]);
+  const [action, ...rest] = args;
+  if (action === "forget") {
+    const id = Number(rest[0]);
     if (!Number.isInteger(id) || id <= 0) {
       process.stderr.write("  Usage: phoenix memory forget <number>\n");
       return 2;
@@ -613,16 +618,66 @@ function showMemory(phoenix: Phoenix, args: string[]): number {
     process.stdout.write(removed ? `  ${c.green("✓")} Forgot #${id}\n` : `  No memory #${id}\n`);
     return removed ? 0 : 1;
   }
+  if (action === "add" || action === "profile" || action === "person" || action === "style") {
+    // phoenix memory add "text" | profile "text" | person "Name" "text" | style "text"
+    const subject = action === "person" ? rest[0] : undefined;
+    const text = (action === "person" ? rest.slice(1) : rest).join(" ").trim();
+    if (!text || (action === "person" && !subject)) {
+      process.stderr.write('  Usage: phoenix memory add|profile|style "text"   or   phoenix memory person "Name" "text"\n');
+      return 2;
+    }
+    const reason = sensitiveReason(text);
+    if (reason) {
+      process.stderr.write(`  ${c.red("✗")} Not saved: ${reason}. Phoenix never keeps secrets in memory.\n`);
+      return 2;
+    }
+    const kind = action === "add" ? "fact" : action;
+    const item = phoenix.memory.add(text, { kind, subject });
+    process.stdout.write(`  ${c.green("✓")} Remembered #${item.id} (${kind}${subject ? `: ${subject}` : ""})\n`);
+    return 0;
+  }
+  if (action !== undefined && action !== "all") {
+    process.stderr.write("  Usage: phoenix memory [all|add|profile|person|style|forget]\n");
+    return 2;
+  }
+
   const items = phoenix.memory.list();
+  const lasting = items.filter((m) => m.kind !== "episode");
   if (items.length === 0) {
     process.stdout.write(`  ${c.dim("Phoenix doesn't remember anything about you yet.")}\n`);
     return 0;
   }
-  process.stdout.write(`\n  ${c.ember("What Phoenix remembers")} ${c.dim("(sent to Claude as context with each request)")}\n`);
-  for (const m of items) {
-    process.stdout.write(`  ${c.amber(`#${m.id}`.padEnd(5))} ${m.text} ${c.dim(new Date(m.createdAt).toLocaleDateString())}\n`);
+  const line = (m: MemoryItem) =>
+    `    ${c.amber(`#${m.id}`.padEnd(6))}${m.text} ${c.dim(new Date(m.createdAt).toLocaleDateString("en-GB"))}\n`;
+  const out = (s: string) => process.stdout.write(s);
+  out(`\n  ${c.ember("What Phoenix remembers about you")} ${c.dim("(encrypted on this Mac)")}\n`);
+  const sections: Array<[string, MemoryItem[], string]> = [
+    ["Profile", lasting.filter((m) => m.kind === "profile"), "sent with every request (cached)"],
+    ["Facts & preferences", lasting.filter((m) => m.kind === "fact"), "sent only when relevant"],
+    ["How you write", lasting.filter((m) => m.kind === "style"), "used when drafting for you"],
+  ];
+  for (const [title, list, note] of sections) {
+    if (!list.length) continue;
+    out(`\n  ${c.bold(title)} ${c.dim(`— ${note}`)}\n`);
+    list.forEach((m) => out(line(m)));
   }
-  process.stdout.write("\n");
+  for (const kind of ["person", "project"] as const) {
+    const bySubject = new Map<string, MemoryItem[]>();
+    for (const m of lasting.filter((x) => x.kind === kind)) bySubject.set(m.subject!, [...(bySubject.get(m.subject!) ?? []), m]);
+    if (!bySubject.size) continue;
+    out(`\n  ${c.bold(kind === "person" ? "People" : "Projects")} ${c.dim("— sent when you mention them")}\n`);
+    for (const [subject, list] of bySubject) {
+      out(`    ${c.ember(subject)}\n`);
+      list.forEach((m) => out(`  ${line(m)}`));
+    }
+  }
+  const episodes = items.filter((m) => m.kind === "episode");
+  if (episodes.length) {
+    const show = action === "all" ? episodes : episodes.slice(-5);
+    out(`\n  ${c.bold("Recent requests")} ${c.dim(`— ${episodes.length} kept, found again when relevant${action === "all" ? "" : " (phoenix memory all shows every one)"}`)}\n`);
+    show.forEach((m) => out(line(m)));
+  }
+  out(`\n  ${c.dim("Add: phoenix memory profile \"I work at Varsun as …\"  ·  person \"Ankit\" \"colleague, …\"  ·  forget <n>")}\n\n`);
   return 0;
 }
 

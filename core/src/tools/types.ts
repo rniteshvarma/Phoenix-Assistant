@@ -44,6 +44,8 @@ export interface ToolSpec<S extends z.ZodType> {
   /** True when running it sends its input off this Mac (email, forms, bookings…). Protected
    *  values in such an input need the user's approval twice. */
   leavesDevice?: boolean;
+  /** For tools that send the user's words: once approved and run, keep them as a writing sample. */
+  styleSample?: (input: z.infer<S>) => { subject: string; text: string } | null;
   run: (input: z.infer<S>, ctx: ToolContext) => Promise<string>;
 }
 
@@ -54,6 +56,7 @@ export interface Tool {
   tier: Tier;
   untrustedOutput: boolean;
   leavesDevice: boolean;
+  styleSample?: (input: unknown) => { subject: string; text: string } | null;
   parse: (input: unknown) => { ok: true; value: unknown } | { ok: false; error: string };
   describe: (input: unknown) => string;
   run: (input: unknown, ctx: ToolContext) => Promise<string>;
@@ -76,6 +79,7 @@ export function defineTool<S extends z.ZodType>(spec: ToolSpec<S>): Tool {
     tier: spec.tier,
     untrustedOutput: spec.untrustedOutput ?? false,
     leavesDevice: spec.leavesDevice ?? false,
+    styleSample: spec.styleSample ? (input) => spec.styleSample!(spec.schema.parse(input)) : undefined,
     parse,
     describe: (input) => spec.describe(spec.schema.parse(input)),
     run: (input, ctx) => spec.run(spec.schema.parse(input), ctx),

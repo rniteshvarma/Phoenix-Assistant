@@ -1,3 +1,4 @@
+import { migrateMemories } from "./memory.ts";
 import fs from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
@@ -65,6 +66,7 @@ export function openDatabase(file: string): DatabaseSync {
   const db = new DatabaseSync(file);
   db.exec("PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
   db.exec(SCHEMA);
+  migrateMemories(db);
   fs.chmodSync(file, 0o600);
   return db;
 }

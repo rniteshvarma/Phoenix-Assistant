@@ -97,6 +97,16 @@ export class GuardedExecutor {
         session,
       });
       const safe = vault.protect(output).text;
+      // Learn how the user writes from messages they approved (stored as placeholders, on this Mac).
+      const approved = decision.kind === "needs_approval" || needsTwo;
+      const sample = approved ? tool.styleSample?.(parsed.value) : null;
+      if (sample && sample.text.trim()) {
+        try {
+          this.#services.memory.addStyleSample(vault.protect(sample.subject).text, vault.protect(sample.text.slice(0, 600)).text);
+        } catch {
+          // memory full: not worth failing the action over
+        }
+      }
       this.#audit.append("tool.executed", call.taskId, {
         tool: call.name,
         toolUseId: call.toolUseId,

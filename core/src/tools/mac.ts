@@ -102,6 +102,7 @@ export const messagesSend = defineTool({
     to: z.string().min(3).max(100).describe("Phone number or email, e.g. [[PHONE_1]]"),
     text: z.string().min(1).max(2000),
   }),
+  styleSample: (i) => ({ subject: i.to, text: i.text }),
   describe: (i) => `Send iMessage to ${i.to}: "${i.text.length > 60 ? `${i.text.slice(0, 57)}…` : i.text}"`,
   run: onMac("messages", "messages_send"),
 });

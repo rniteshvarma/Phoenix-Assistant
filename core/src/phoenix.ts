@@ -12,6 +12,7 @@ import { GuardedExecutor } from "./policy/executor.ts";
 import { loadKeys } from "./security/keys.ts";
 import { openDatabase } from "./store/db.ts";
 import { MemoryStore } from "./store/memory.ts";
+import { recall, renderProfile, renderRecall } from "./memory/recall.ts";
 import { SessionStore } from "./store/sessions.ts";
 import { TaskStore } from "./store/tasks.ts";
 import { BUILTIN_TOOLS } from "./tools/builtin.ts";
@@ -79,19 +80,29 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
     async ask(request: string, o: AskOptions): Promise<AskResult> {
       const session = sessions.resumeOrCreate(o.sessionId);
       // Privacy Shield: sensitive values become placeholders before anything reaches the model.
+      // Memory: the profile (cached) plus only what's relevant to this request, picked on this Mac.
+      const recalled = recall(memory, request);
       const context = renderContext({
         now: o.now ?? new Date(),
         timeZone,
-        memories: memory.list(),
+        recalled: renderRecall(recalled),
         channel: o.channel ?? "text",
       });
+      const profile = vault.protect(renderProfile(recalled.profile)).text || undefined;
       const safeRequest = vault.protect(request).text;
       const safeContext = vault.protect(context).text;
       const outcome = await runTask(
-        { model: o.model, approver: o.approver, registry, policy, authority, executor, audit, tasks, vault, maxSteps: cfg.maxSteps },
+        { model: o.model, approver: o.approver, registry, policy, authority, executor, audit, tasks, vault, memory, maxSteps: cfg.maxSteps },
         safeRequest,
-        { onEvent: o.onEvent, signal: o.signal, history: session.messages, context: safeContext, readOnly: o.readOnly },
+        { onEvent: o.onEvent, signal: o.signal, history: session.messages, context: safeContext, readOnly: o.readOnly, profile },
       );
+      if (!o.readOnly && outcome.status !== "cancelled") {
+        try {
+          memory.addEpisode(episodeText(safeRequest, outcome.status, vault.protect(outcome.text).text));
+        } catch {
+          // never fail a request over its diary entry
+        }
+      }
       sessions.save(session.id, outcome.messages, session.turns + 1);
       return { ...outcome, sessionId: session.id };
     },
@@ -103,3 +114,15 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
 }
 
 export type Phoenix = ReturnType<typeof createPhoenix>;
+
+const clip = (s: string, n: number) => {
+  const t = s.replace(/\s+/g, " ").trim();
+  return t.length > n ? `${t.slice(0, n - 1)}…` : t;
+};
+
+/** One line for the diary of past requests (already protected). */
+export function episodeText(request: string, status: string, reply: string): string {
+  return status === "completed"
+    ? `Asked: "${clip(request, 200)}" → ${clip(reply, 240) || "done"}`
+    : `Asked: "${clip(request, 200)}" → not finished (${status}): ${clip(reply, 160)}`;
+}
