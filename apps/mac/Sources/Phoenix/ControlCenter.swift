@@ -46,12 +46,15 @@ struct ConnectorRow: Identifiable { let id: String; let name: String; let descri
 struct KeyRow: Identifiable { var id: String { name }; let name: String; let label: String; let saved: Bool; let source: String?; let hint: String? }
 struct HistoryRow: Identifiable { let id: String; let title: String; let preview: String; let updatedAt: Double; let turns: Int }
 struct TranscriptLine: Identifiable { let id: Int; let role: String; let text: String }
+struct McpToolRow: Identifiable { var id: String { name }; let name: String; let title: String; let asks: Bool }
+struct McpRow: Identifiable { let id: String; let name: String; let transport: String; let enabled: Bool; let status: String; let error: String?; let tools: [McpToolRow] }
+struct McpPreset: Identifiable { var id: String { preset }; let preset: String; let name: String; let transport: String; let url: String?; let command: String?; let args: [String]; let tokenEnv: String?; let tokenHelp: String }
 
 @MainActor
 final class ControlCenterModel: ObservableObject {
     enum Section: String, CaseIterable, Identifiable {
         case general = "General", appearance = "Appearance", memory = "Memory", skills = "Skills",
-             connectors = "Connectors", keys = "API Keys", history = "History"
+             connectors = "Connectors", keys = "API Keys", backups = "Backups", history = "History"
         var id: String { rawValue }
         var icon: String {
             switch self {
@@ -61,6 +64,7 @@ final class ControlCenterModel: ObservableObject {
             case .skills: return "sparkles"
             case .connectors: return "puzzlepiece.extension"
             case .keys: return "key"
+            case .backups: return "lock.shield"
             case .history: return "clock.arrow.circlepath"
             }
         }
@@ -113,6 +117,30 @@ final class ControlCenterModel: ObservableObject {
     @Published var keys: [KeyRow] = []
     @Published var keyInputs: [String: String] = [:]
 
+    // Backups
+    @Published var backupReady = false
+    @Published var backupDir = ""
+    @Published var backupNightly = true
+    @Published var lastBackup: Double?
+    @Published var lastBackupFile: String?
+    @Published var backupError: String?
+    @Published var pass1 = ""
+    @Published var pass2 = ""
+
+    // Third-party connectors (MCP)
+    @Published var mcp: [McpRow] = []
+    @Published var presets: [McpPreset] = []
+    @Published var addingConnector = false
+    @Published var draftPreset = "custom-http"
+    @Published var draftName = ""
+    @Published var draftTransport = "http"
+    @Published var draftURL = ""
+    @Published var draftCommand = ""
+    @Published var draftArgs = ""
+    @Published var draftTokenEnv = ""
+    @Published var draftToken = ""
+    @Published var tokenHelp = ""
+
     // History
     @Published var history: [HistoryRow] = []
     @Published var historyQuery = ""
@@ -158,6 +186,13 @@ final class ControlCenterModel: ObservableObject {
             }
             screenApps = o["screenApps"] as? [String] ?? []
             connectors = Self.parseConnectors(o["connectors"])
+            applyBackup(o["backup"])
+            mcp = Self.parseMcp(o["mcp"])
+            presets = (o["mcpPresets"] as? [[String: Any]] ?? []).map {
+                McpPreset(preset: $0["preset"] as? String ?? "", name: $0["name"] as? String ?? "", transport: $0["transport"] as? String ?? "http",
+                          url: $0["url"] as? String, command: $0["command"] as? String, args: $0["args"] as? [String] ?? [],
+                          tokenEnv: $0["tokenEnv"] as? String, tokenHelp: $0["tokenHelp"] as? String ?? "")
+            }
             keys = Self.parseKeys(o["keys"])
             if let coreName = o["name"] as? String, coreName != Persona.name {
                 // Keep the core in step with the name chosen here.
@@ -362,6 +397,114 @@ final class ControlCenterModel: ObservableObject {
             let r = try await call(["op": "keys.test"]) as? [String: Any]
             say(r?["message"] as? String ?? "", error: (r?["ok"] as? Bool) != true)
         }
+    }
+
+    // MARK: Backups
+
+    func applyBackup(_ value: Any?) {
+        guard let b = value as? [String: Any] else { return }
+        backupReady = b["ready"] as? Bool ?? false
+        backupDir = b["dir"] as? String ?? ""
+        backupNightly = b["nightly"] as? Bool ?? true
+        lastBackup = b["lastBackup"] as? Double
+        lastBackupFile = b["lastFile"] as? String
+        backupError = b["lastError"] as? String
+    }
+
+    func setupBackups() async {
+        guard pass1 == pass2 else { say("The two passphrases don't match.", error: true); return }
+        await attempt {
+            applyBackup(try await call(["op": "backup.setup", "passphrase": pass1]))
+            pass1 = ""
+            pass2 = ""
+            say("Backups are on. Your first backup is saved. Keep the passphrase somewhere safe.")
+        }
+    }
+
+    func backupNow() async {
+        await attempt {
+            applyBackup(try await call(["op": "backup.now"]))
+            say("Backed up.")
+        }
+    }
+
+    func saveBackupSettings() async {
+        await attempt {
+            applyBackup(try await call(["op": "backup.settings", "dir": backupDir, "nightly": backupNightly]))
+            say("Saved.")
+        }
+    }
+
+    func revealBackups() {
+        NSWorkspace.shared.selectFile(lastBackupFile, inFileViewerRootedAtPath: backupDir)
+    }
+
+    // MARK: Third-party connectors
+
+    static func parseMcp(_ value: Any?) -> [McpRow] {
+        (value as? [[String: Any]] ?? []).map { c in
+            McpRow(id: c["id"] as? String ?? "", name: c["name"] as? String ?? "", transport: c["transport"] as? String ?? "",
+                   enabled: c["enabled"] as? Bool ?? true, status: c["status"] as? String ?? "", error: c["error"] as? String,
+                   tools: (c["tools"] as? [[String: Any]] ?? []).map {
+                       McpToolRow(name: $0["name"] as? String ?? "", title: $0["title"] as? String ?? "", asks: ($0["tier"] as? Int ?? 2) > 0)
+                   })
+        }
+    }
+
+    func pickPreset(_ id: String) {
+        draftPreset = id
+        tokenHelp = ""
+        if let p = presets.first(where: { $0.preset == id }) {
+            draftName = p.name
+            draftTransport = p.transport
+            draftURL = p.url ?? ""
+            draftCommand = p.command ?? ""
+            draftArgs = p.args.joined(separator: " ")
+            draftTokenEnv = p.tokenEnv ?? ""
+            tokenHelp = p.tokenHelp
+        } else {
+            draftName = ""
+            draftTransport = id == "custom-command" ? "stdio" : "http"
+            draftURL = ""; draftCommand = ""; draftArgs = ""; draftTokenEnv = ""
+        }
+        addingConnector = true
+    }
+
+    func addConnector() async {
+        await attempt {
+            var req: [String: Any] = ["op": "mcp.add", "name": draftName, "transport": draftTransport]
+            if draftPreset != "custom-http" && draftPreset != "custom-command" { req["preset"] = draftPreset }
+            if draftTransport == "http" { req["url"] = draftURL.trimmingCharacters(in: .whitespaces) }
+            else {
+                req["command"] = draftCommand.trimmingCharacters(in: .whitespaces)
+                req["args"] = draftArgs.split(separator: " ").map(String.init)
+                if !draftTokenEnv.isEmpty { req["tokenEnv"] = draftTokenEnv }
+            }
+            if !draftToken.isEmpty { req["token"] = draftToken }
+            let r = try await call(req) as? [String: Any]
+            mcp = Self.parseMcp(r?["mcp"])
+            draftToken = ""
+            addingConnector = false
+            let c = r?["connector"] as? [String: Any]
+            if c?["status"] as? String == "connected" {
+                say("\(draftName) connected with \((c?["tools"] as? [Any])?.count ?? 0) tools.")
+            } else {
+                say("\(draftName) was added but didn't connect: \(c?["error"] as? String ?? "unknown error")", error: true)
+            }
+        }
+    }
+
+    func setMcp(_ c: McpRow, _ on: Bool) async {
+        await attempt { mcp = Self.parseMcp((try await call(["op": "mcp.set", "id": c.id, "enabled": on]) as? [String: Any])?["mcp"]) }
+    }
+
+    func reconnectMcp(_ c: McpRow) async {
+        await attempt { mcp = Self.parseMcp((try await call(["op": "mcp.reconnect", "id": c.id]) as? [String: Any])?["mcp"]) }
+    }
+
+    func removeMcp(_ c: McpRow) async {
+        guard confirm("Remove \(c.name)?", "Its tools go away and its saved token is deleted from the Keychain.") else { return }
+        await attempt { mcp = Self.parseMcp((try await call(["op": "mcp.remove", "id": c.id]) as? [String: Any])?["mcp"]) }
     }
 
     // MARK: History

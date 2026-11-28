@@ -5,7 +5,7 @@ import type { ModelTurn } from "../agent/model.ts";
 import { ScriptedModel, callTool, say } from "../agent/scripted.ts";
 import { createPhoenix, type Phoenix } from "../phoenix.ts";
 import { FakeApprover, tempConfig } from "../testing.ts";
-import { NEVER_APPS, linesToRedact, runScreenSession, type ScreenModel } from "./session.ts";
+import { NEVER_APPS, linesToRedact, runScreenSession, targetAt, type ScreenModel } from "./session.ts";
 
 function setup() {
   const { cfg, cleanup } = tempConfig();
@@ -189,6 +189,39 @@ test("screen_act: needs approval to start, only allowed apps, never banking apps
     const results = JSON.stringify(outcome.messages);
     assert.match(results, /isn't on the list of apps/);
     assert.match(results, /never operates HDFC Bank/);
+  } finally {
+    done();
+  }
+});
+
+test("on-screen text under a click: payment buttons never pressed, final buttons need OK (iPhone Mirroring)", async () => {
+  const lines = [
+    { text: "Meghana Foods", box: [20, 100, 220, 130] as [number, number, number, number] },
+    { text: "Proceed to Pay ₹349", box: [40, 800, 360, 840] as [number, number, number, number] },
+    { text: "Confirm UberGo", box: [40, 900, 300, 940] as [number, number, number, number] },
+  ];
+  assert.equal(targetAt(lines, 100, 115)?.kind, null);
+  assert.equal(targetAt(lines, 200, 820)?.kind, "money");
+  assert.equal(targetAt(lines, 150, 920)?.kind, "final");
+  assert.equal(targetAt(lines, 600, 600), null);
+
+  const { phoenix, done } = setup();
+  try {
+    const calls = fakeScreen(phoenix, { lines });
+    const model = new ScriptedScreen([
+      turn(act("screenshot")),
+      turn(act("left_click", { coordinate: [200, 820] })),
+      turn(act("left_click", { coordinate: [150, 920] })),
+      turn(confirmStep("Book UberGo to the airport"), act("left_click", { coordinate: [150, 920] })),
+    ]);
+    await runScreenSession("iPhone Mirroring", "Get an Uber", {
+      devices: phoenix.devices, vault: phoenix.vault, model, confirm: async () => true,
+    });
+    assert.match(JSON.stringify(model.results(1)), /never pays/);
+    assert.match(JSON.stringify(model.results(2)), /confirm_step/);
+    const clicks = calls.filter((c) => c.tool === "screen_action" && c.input.name === "left_click");
+    assert.equal(clicks.length, 1, "only the approved click reached the Mac");
+    assert.deepEqual(clicks[0]!.input.input.coordinate, [150, 920]);
   } finally {
     done();
   }

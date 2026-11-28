@@ -19,6 +19,10 @@ import path from "node:path";
 import { KIND_LABEL } from "../privacy/detect.ts";
 import { scanDocument } from "../privacy/documents.ts";
 import { ProactiveScheduler } from "../proactive/scheduler.ts";
+import { backupCommand } from "./backupCommand.ts";
+import { McpHub } from "../mcp/hub.ts";
+import { backupDue, backupSettings, createBackup, updateBackupSettings } from "../backup/backup.ts";
+import { loadMasterKey } from "../security/keys.ts";
 import { sensitiveReason, type MemoryItem } from "../store/memory.ts";
 import { NEVER_APPS } from "../screen/session.ts";
 import { allowedScreenApps } from "../tools/screen.ts";
@@ -41,6 +45,10 @@ ${c.ember("Phoenix")} — CLI
   phoenix proactive brief HH:MM [daily|weekdays]   Set the morning briefing time
   phoenix proactive quiet HH:MM-HH:MM               Set quiet hours (no nudges)
   phoenix proactive lead <minutes>                  Nudge this long before meetings
+  phoenix backup                 Encrypted backups: status
+  phoenix backup setup           Choose a passphrase and make the first backup
+  phoenix backup now             Back up right now
+  phoenix backup restore <file>  Restore from a backup (asks for the passphrase)
   phoenix screen                 Apps Phoenix may operate on screen (and the ones it never will)
   phoenix screen allow "App"     Let Phoenix operate this app (it still asks before starting)
   phoenix screen deny "App"      Take an app off the list
@@ -100,6 +108,8 @@ async function main(argv: string[]): Promise<number> {
         return proactiveCommand(phoenix, rest);
       case "screen":
         return screenCommand(phoenix, rest);
+      case "backup":
+        return await backupCommand(phoenix, rest);
       default: {
         const request = args.join(" ").trim();
         if (!request) {
@@ -553,6 +563,11 @@ async function serve(phoenix: Phoenix, offline: boolean): Promise<number> {
   const token = loadOrCreateGatewayToken(phoenix.cfg);
   const port = Number(process.env.PHOENIX_PORT ?? 7788);
   const speech = speechFromEnvironment(process.env, phoenix.cfg.home);
+  const connectors = new McpHub({
+    registry: phoenix.registry,
+    settings: phoenix.settings,
+    log: (line) => process.stdout.write(`  ${c.dim(new Date().toLocaleTimeString())} ${line}\n`),
+  });
   const proactive = new ProactiveScheduler(phoenix, {
     makeModel: () => makeModel("briefing"),
     log: (line) => process.stdout.write(`  ${c.dim(new Date().toLocaleTimeString())} ${line}\n`),
@@ -570,6 +585,7 @@ async function serve(phoenix: Phoenix, offline: boolean): Promise<number> {
     proactive,
     modelFactory: makeModel,
     admin: {
+      mcp: connectors,
       keysChanged: () => {
         factory = modelFactory(offline, { quiet: true });
         process.stdout.write(`  ${c.dim(new Date().toLocaleTimeString())} API key updated from the Control Center\n`);
@@ -605,11 +621,25 @@ async function serve(phoenix: Phoenix, offline: boolean): Promise<number> {
     ].join("\n"),
   );
   proactive.start();
+  void connectors.startAll();
+  // Nightly encrypted backup: checked every 30 minutes, runs once a day.
+  const backupTimer = setInterval(() => {
+    const s = backupSettings(phoenix.settings);
+    if (!backupDue(s)) return;
+    try {
+      const file = createBackup(phoenix.cfg, phoenix.settings, loadMasterKey(phoenix.cfg));
+      process.stdout.write(`  ${c.dim(new Date().toLocaleTimeString())} backup saved: ${file}\n`);
+    } catch (err) {
+      updateBackupSettings(phoenix.settings, { lastError: err instanceof Error ? err.message : String(err) });
+    }
+  }, 30 * 60_000);
   await new Promise<void>((resolve) => {
     process.once("SIGINT", resolve);
     process.once("SIGTERM", resolve);
   });
   proactive.stop();
+  await connectors.stopAll();
+  clearInterval(backupTimer);
   process.stdout.write(`\n  ${c.dim("Stopping…")}\n`);
   await gateway.close();
   return 0;

@@ -33,6 +33,29 @@ private connection as the Summon Bar (this Mac only, token-protected, browsers r
 | API Keys | Add, replace, test or remove keys (stored in the Keychain; used immediately, no restart) |
 | History | Read, search, copy or delete past conversations |
 
+## Backups
+
+Control Center › **Backups**, or:
+
+```bash
+npm run phoenix -- backup setup                  # choose a passphrase, first backup
+npm run phoenix -- backup now                    # back up right now
+npm run phoenix -- backup restore <file>         # restore (stop the core first: autostart off)
+```
+
+Each backup holds the database (memory, profile, skills, history, settings, the Privacy Shield
+vault), the master key that unlocks it, and Phoenix's notes. It is encrypted to a backup key
+(X25519 + AES-256-GCM) whose private half is sealed with your passphrase (scrypt), so nightly
+backups need nothing from you and restoring needs only the file and your passphrase, even on
+a new Mac. Default folder: iCloud Drive › Phoenix Backups; the newest 14 are kept.
+
+## Connectors (MCP)
+
+Control Center › **Connectors › Add a connector**: GitHub and Notion setups, or any MCP server
+by URL or command. Tools a server marks read-only run freely; everything else asks you first;
+results are treated as outside content and screened by the Privacy Shield; tokens are kept in
+the Keychain. Phoenix never adds a connector by itself.
+
 ## Memory: Phoenix knows you (without re-reading everything)
 
 Everything is encrypted on this Mac. Only the **profile** goes with every request (in the cached part of

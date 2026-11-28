@@ -98,6 +98,16 @@ function toInputSchema(schema: z.ZodType): Anthropic.Beta.BetaTool.InputSchema {
 export class ToolRegistry {
   #tools = new Map<string, Tool>();
 
+  /** Add a tool at runtime (connectors). Replaces one with the same name. */
+  add(tool: Tool): void {
+    this.#tools.set(tool.name, tool);
+  }
+
+  /** Remove tools whose names start with `prefix` (a connector going away). */
+  removePrefix(prefix: string): void {
+    for (const name of [...this.#tools.keys()]) if (name.startsWith(prefix)) this.#tools.delete(name);
+  }
+
   constructor(tools: Tool[]) {
     for (const tool of tools) {
       if (this.#tools.has(tool.name)) throw new Error(`Duplicate tool: ${tool.name}`);

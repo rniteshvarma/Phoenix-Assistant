@@ -77,6 +77,25 @@ export function describeKey(value: string): string {
  */
 export function storeSecret(name: SecretName, value: string): void {
   const s = SECRETS[name];
+  storeServiceSecret(s.service, s.label, value);
+}
+
+/** Keychain items for connector tokens etc.: one item per service name. */
+export function findServiceSecret(service: string): string | undefined {
+  return findSecret("__PHOENIX_NO_ENV__", service)?.value;
+}
+
+export function removeServiceSecret(service: string): void {
+  try {
+    execFileSync("security", ["delete-generic-password", "-a", os.userInfo().username, "-s", service], { stdio: "ignore" });
+  } catch {
+    // not there
+  }
+}
+
+export function storeServiceSecret(service: string, label: string, value: string): void {
+  if (!/^[A-Za-z0-9_.-]{3,120}$/.test(service) || /["\\\n]/.test(label)) throw new Error("invalid key name");
+  const s = { service, label };
   const v = value.trim();
   if (!/^[A-Za-z0-9_\-.:]{8,400}$/.test(v)) {
     throw new Error("that doesn't look like an API key (letters, digits, - _ . only; no spaces)");

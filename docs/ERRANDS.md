@@ -16,6 +16,10 @@ swap any line for something you actually do every week, and Phoenix's tests foll
 | 9 | "Summarise my unread email and draft replies" | Gmail (official Google sign-in) | Yes, before sending | ⏸ on hold (dedicated account) |
 | 10 | "Focus mode: Do Not Disturb on and my focus playlist" | Shortcuts + open Spotify | Yes (running a Shortcut) | ✅ ready |
 
+**Safety for screen errands (iPhone Mirroring included):** before every click Phoenix reads the
+screen's own text under the click point, on the Mac. Payment buttons (Pay, Place order, Proceed to pay…)
+are never pressed; final buttons (Send, Confirm, Request, Book, Order…) need your OK right before.
+
 **Always true, whatever the errand**
 - Phoenix never pays, enters an OTP or UPI PIN, or logs in for you: it stops and hands over.
 - Your sensitive details (Aadhaar, PAN, cards, bank, passwords, OTPs, email IDs, phone numbers) are blanked out

@@ -9,6 +9,9 @@ import { MEMORY_KINDS, sensitiveReason, type MemoryKind } from "../store/memory.
 import type { History } from "../store/sessions.ts";
 import { allowedScreenApps } from "../tools/screen.ts";
 import { CONNECTORS, disabledConnectors, setConnector } from "./connectors.ts";
+import { backupSettings, createBackup, setupBackupKey, updateBackupSettings } from "../backup/backup.ts";
+import { loadMasterKey } from "../security/keys.ts";
+import { MCP_PRESETS, type McpHub } from "../mcp/hub.ts";
 
 /**
  * The Control Center's view of Phoenix: settings, memory, skills, connectors, keys and history.
@@ -20,6 +23,8 @@ import { CONNECTORS, disabledConnectors, setConnector } from "./connectors.ts";
 export interface AdminHooks {
   /** API keys changed: rebuild the Claude client. */
   keysChanged?: () => void;
+  /** Third-party connectors (only in the running core). */
+  mcp?: McpHub;
 }
 
 const kind = z.enum(MEMORY_KINDS);
@@ -44,6 +49,17 @@ export const AdminOp = z.discriminatedUnion("op", [
   z.object({ op: z.literal("history.list") }),
   z.object({ op: z.literal("history.get"), id: z.string().max(64) }),
   z.object({ op: z.literal("history.remove"), id: z.string().max(64) }),
+  z.object({ op: z.literal("backup.status") }),
+  z.object({ op: z.literal("backup.setup"), passphrase: z.string().min(1).max(500) }),
+  z.object({ op: z.literal("backup.now") }),
+  z.object({ op: z.literal("backup.settings"), dir: z.string().min(1).max(500).optional(), nightly: z.boolean().optional() }),
+  z.object({ op: z.literal("mcp.add"), preset: z.string().max(40).optional(), name: z.string().min(1).max(40),
+    transport: z.enum(["http", "stdio"]), url: z.string().max(500).optional(), command: z.string().max(200).optional(),
+    args: z.array(z.string().max(300)).max(30).optional(), tokenEnv: z.string().regex(/^[A-Z_][A-Z0-9_]{0,60}$/).optional(),
+    token: z.string().max(400).optional() }),
+  z.object({ op: z.literal("mcp.remove"), id: z.string().max(40) }),
+  z.object({ op: z.literal("mcp.set"), id: z.string().max(40), enabled: z.boolean() }),
+  z.object({ op: z.literal("mcp.reconnect"), id: z.string().max(40) }),
 ]);
 export type AdminRequest = z.infer<typeof AdminOp>;
 
@@ -63,6 +79,9 @@ export async function handleAdmin(phoenix: Phoenix, raw: unknown, hooks: AdminHo
   switch (req.op) {
     case "overview":
       return {
+        mcp: hooks.mcp?.status() ?? [],
+        mcpPresets: MCP_PRESETS,
+        backup: backupView(phoenix),
         name: settings.get<string>("assistant.name", "Phoenix"),
         proactive: settings.proactive(),
         proactiveDefaults: PROACTIVE_DEFAULTS,
@@ -157,7 +176,45 @@ export async function handleAdmin(phoenix: Phoenix, raw: unknown, hooks: AdminHo
     }
     case "history.remove":
       return { ok: sessions.remove(req.id) };
+
+    case "backup.status":
+      return backupView(phoenix);
+    case "backup.setup":
+      setupBackupKey(settings, req.passphrase);
+      createBackup(phoenix.cfg, settings, loadMasterKey(phoenix.cfg));
+      return backupView(phoenix);
+    case "backup.now":
+      createBackup(phoenix.cfg, settings, loadMasterKey(phoenix.cfg));
+      return backupView(phoenix);
+    case "backup.settings":
+      updateBackupSettings(settings, { ...(req.dir ? { dir: req.dir.trim() } : {}), ...(req.nightly !== undefined ? { nightly: req.nightly } : {}) });
+      return backupView(phoenix);
+
+    case "mcp.add": {
+      const hub = needHub(hooks);
+      const { op: _op, token, ...cfg } = req;
+      return { connector: await hub.add(cfg, token), mcp: hub.status() };
+    }
+    case "mcp.remove":
+      await needHub(hooks).remove(req.id);
+      return { mcp: needHub(hooks).status() };
+    case "mcp.set":
+      await needHub(hooks).setEnabled(req.id, req.enabled);
+      return { mcp: needHub(hooks).status() };
+    case "mcp.reconnect":
+      await needHub(hooks).reconnect(req.id);
+      return { mcp: needHub(hooks).status() };
   }
+}
+
+function needHub(hooks: AdminHooks): McpHub {
+  if (!hooks.mcp) throw new Error("connectors are only available while the Phoenix core is running");
+  return hooks.mcp;
+}
+
+function backupView(phoenix: Phoenix) {
+  const s = backupSettings(phoenix.settings);
+  return { ready: !!s.publicKey, dir: s.dir, nightly: s.nightly, keep: s.keep, lastBackup: s.lastBackup ?? null, lastFile: s.lastFile ?? null, lastError: s.lastError ?? null };
 }
 
 function connectorList(phoenix: Phoenix) {

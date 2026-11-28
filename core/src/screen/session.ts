@@ -94,6 +94,24 @@ export function screenSystemPrompt(app: string, goal: string): string {
   ].join("\n");
 }
 
+/** Buttons Phoenix never presses: paying is always left to the user. */
+export const MONEY_WORDS = /\b(pay|pay now|place order|buy now|purchase|proceed to pay|confirm and pay|add money|send money|transfer|book now|pay & place order)\b/i;
+/** Final steps that need the user's OK right before. */
+export const FINAL_WORDS = /\b(send|submit|post|publish|share|book|confirm|delete|remove|trash|reply|checkout|check out|order|request|unsubscribe|accept|sign out|log ?out)\b/i;
+
+/**
+ * What the screen says under a click point, read from the screenshot's own text (on the Mac).
+ * Works where the app exposes no button names (iPhone Mirroring, web canvases). Pure, for tests.
+ */
+export function targetAt(lines: readonly OcrLine[], x: number, y: number): { label: string; kind: "money" | "final" | null } | null {
+  const pad = 10;
+  const hits = lines.filter(({ box: [x0, y0, x1, y1] }) => x >= x0 - pad && x <= x1 + pad && y >= y0 - pad && y <= y1 + pad);
+  if (hits.length === 0) return null;
+  const dist = (l: OcrLine) => Math.hypot((l.box[0] + l.box[2]) / 2 - x, (l.box[1] + l.box[3]) / 2 - y);
+  const label = hits.sort((a, b) => dist(a) - dist(b))[0]!.text.trim();
+  return { label, kind: MONEY_WORDS.test(label) ? "money" : FINAL_WORDS.test(label) ? "final" : null };
+}
+
 /** Which OCR lines to black out: any line with a sensitive detail in it. Pure, for tests. */
 export function linesToRedact(lines: readonly OcrLine[]): OcrLine[] {
   return lines.filter((l) => detect(l.text).length > 0);
@@ -120,6 +138,7 @@ export async function runScreenSession(app: string, goal: string, deps: ScreenSe
   const system = screenSystemPrompt(appName, goal);
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: `Do this in ${appName}: ${goal}` }];
   let armed = 0; // actions left that the user just approved
+  let screenText: OcrLine[] = []; // text of the latest screenshot, read on the Mac
   const approvedTokens = new Set<string>(); // protected values the user agreed to type
 
   try {
@@ -185,6 +204,7 @@ export async function runScreenSession(app: string, goal: string, deps: ScreenSe
       case "screenshot":
       case "zoom": {
         const shot = JSON.parse(await ask("screen_capture", {})) as { id: string; lines: OcrLine[] };
+        screenText = shot.lines;
         const hidden = linesToRedact(shot.lines);
         const image = JSON.parse(
           await ask("screen_image", { id: shot.id, redact: hidden.map((l) => l.box), region: use.name === "zoom" ? input.region : undefined }),
@@ -219,6 +239,17 @@ export async function runScreenSession(app: string, goal: string, deps: ScreenSe
           return needsConfirm("pressing Return sends the message");
         }
         break;
+      }
+    }
+    // Before a click, check what the screen says there (covers apps without button names).
+    if (["left_click", "double_click", "triple_click", "left_mouse_down"].includes(use.name)) {
+      const at = Array.isArray(input.coordinate) ? (input.coordinate as number[]) : null;
+      const target = at ? targetAt(screenText, at[0]!, at[1]!) : null;
+      if (target?.kind === "money") {
+        return reply(`Not clicked: "${target.label}" is a payment step, and Phoenix never pays. Stop here and tell the user it's ready for them to pay.`, true);
+      }
+      if (target?.kind === "final" && armed <= 0) {
+        return reply(`Not clicked: "${target.label}" looks like a final step. Call confirm_step first, describing exactly what it will do.`, true);
       }
     }
     const output = await ask("screen_action", { name: use.name, input, armed: armed > 0 });

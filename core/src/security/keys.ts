@@ -74,3 +74,24 @@ function fileMasterKey(cfg: PhoenixConfig): Buffer {
   fs.writeFileSync(file, master.toString("hex"), { mode: 0o600, flag: "wx" });
   return master;
 }
+
+/** The raw master key, for encrypted backups only. */
+export function loadMasterKey(cfg: PhoenixConfig): Buffer {
+  return cfg.keyBackend === "keychain" ? keychainMasterKey() : fileMasterKey(cfg);
+}
+
+/**
+ * Put a master key back (restoring a backup). In the Keychain the value goes to `security`
+ * on its standard input, never on the command line.
+ */
+export function writeMasterKey(cfg: PhoenixConfig, master: Buffer): void {
+  if (master.length !== 32) throw new Error("invalid master key in backup");
+  if (cfg.keyBackend === "keychain") {
+    execFileSync("security", ["-i"], {
+      input: `add-generic-password -U -a ${KEYCHAIN_ACCOUNT} -s ${KEYCHAIN_SERVICE} -l "Phoenix master key" -w ${master.toString("hex")}\n`,
+      stdio: ["pipe", "ignore", "pipe"],
+    });
+  } else {
+    fs.writeFileSync(path.join(cfg.home, "master.key"), master.toString("hex"), { mode: 0o600 });
+  }
+}

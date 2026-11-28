@@ -223,6 +223,7 @@ extension ControlCenterModel.Section {
         case .skills: return "Routines \(n) follows when a request matches. Say \"\(n), learn this: …\" to add one by voice."
         case .connectors: return "What \(n) can reach. Anything that sends, posts, deletes or runs still asks you first."
         case .keys: return "Stored in your Mac's Keychain. After saving, only the first few characters are ever shown."
+        case .backups: return "Encrypted copies of everything \(n) knows, locked with a passphrase only you have."
         case .history: return "Every conversation, as you saw it. Search, copy or delete."
         }
     }
@@ -354,6 +355,7 @@ struct ControlCenterView: View {
         case .skills: SkillsPane(model: model)
         case .connectors: ConnectorsPane(model: model)
         case .keys: KeysPane(model: model)
+        case .backups: BackupsPane(model: model)
         case .history: HistoryPane(model: model)
         }
     }
@@ -713,9 +715,7 @@ struct ConnectorsPane: View {
                 .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Obsidian.rim, lineWidth: 1))
             }
         }
-        Card(title: "Third-party connectors", subtitle: "Notion, Slack, GitHub, Google Drive and more (MCP) are next. Each one's actions will go through the same approvals. Gmail is waiting for your dedicated account.", label: "Coming next") {
-            EmptyView()
-        }
+        McpSection(model: model)
     }
 
     private func icon(_ id: String) -> String {
@@ -731,6 +731,161 @@ struct ConnectorsPane: View {
         case "screen": return "cursorarrow.motionlines"
         case "email": return "envelope"
         default: return "doc.text"
+        }
+    }
+}
+
+// MARK: - Third-party connectors (MCP)
+
+struct McpSection: View {
+    @ObservedObject var model: ControlCenterModel
+
+    var body: some View {
+        Card(title: "Add a connector", subtitle: "Connect services through MCP, the open standard for AI connectors. Reading runs freely; anything that creates, sends or changes something asks you first, and what comes back is screened by the Privacy Shield. Only add connectors you trust: each one runs with your permissions.", label: "Third-party") {
+            HStack(spacing: 8) {
+                ForEach(model.presets) { p in GhostButton(title: p.name, icon: "plus") { model.pickPreset(p.preset) } }
+                GhostButton(title: "Custom URL", icon: "link") { model.pickPreset("custom-http") }
+                GhostButton(title: "Custom command", icon: "terminal") { model.pickPreset("custom-command") }
+            }
+            if model.addingConnector {
+                VStack(alignment: .leading, spacing: 10) {
+                    Rectangle().fill(Obsidian.hairline).frame(height: 1)
+                    HStack(alignment: .top, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            FieldLabel(text: "Name")
+                            TextField("Linear", text: $model.draftName).insetField().frame(width: 190)
+                        }
+                        if model.draftTransport == "http" {
+                            VStack(alignment: .leading, spacing: 6) {
+                                FieldLabel(text: "Server URL")
+                                TextField("https://example.com/mcp", text: $model.draftURL).insetField(mono: true)
+                            }
+                        } else {
+                            VStack(alignment: .leading, spacing: 6) {
+                                FieldLabel(text: "Command")
+                                TextField("npx", text: $model.draftCommand).insetField(mono: true).frame(width: 110)
+                            }
+                            VStack(alignment: .leading, spacing: 6) {
+                                FieldLabel(text: "Arguments")
+                                TextField("-y @org/mcp-server", text: $model.draftArgs).insetField(mono: true)
+                            }
+                        }
+                    }
+                    HStack(alignment: .top, spacing: 14) {
+                        if model.draftTransport == "stdio" {
+                            VStack(alignment: .leading, spacing: 6) {
+                                FieldLabel(text: "Token variable")
+                                TextField("API_TOKEN", text: $model.draftTokenEnv).insetField(mono: true).frame(width: 190)
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            FieldLabel(text: model.draftTransport == "http" ? "Access token (sent as Bearer)" : "Token")
+                            SecureField("Optional; kept in your Keychain", text: $model.draftToken).insetField(mono: true)
+                        }
+                    }
+                    if !model.tokenHelp.isEmpty {
+                        Text(model.tokenHelp).font(.system(size: 11.5)).foregroundStyle(Obsidian.muted)
+                    }
+                    HStack {
+                        Spacer()
+                        GhostButton(title: "Cancel") { model.addingConnector = false }
+                        PrimaryButton(title: "Connect", icon: "bolt.fill") { Task { await model.addConnector() } }
+                    }
+                }
+            }
+        }
+        ForEach(model.mcp) { c in
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Fire.ember.opacity(c.status == "connected" ? 0.25 : 0.06))
+                        Image(systemName: "puzzlepiece.extension.fill").font(.system(size: 14)).foregroundStyle(c.status == "connected" ? AnyShapeStyle(Obsidian.metal) : AnyShapeStyle(Obsidian.faint))
+                    }
+                    .frame(width: 36, height: 36)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(c.name).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(Obsidian.text)
+                            Badge(text: c.status.uppercased(), color: c.status == "connected" ? Obsidian.good : c.status == "error" ? Obsidian.bad : Obsidian.muted)
+                            Badge(text: c.transport == "http" ? "REMOTE" : "ON THIS MAC")
+                        }
+                        Text(c.status == "connected" ? "\(c.tools.count) tools · \(c.tools.filter { !$0.asks }.count) read freely, \(c.tools.filter { $0.asks }.count) ask first" : (c.error ?? ""))
+                            .font(.system(size: 11.5)).foregroundStyle(c.status == "error" ? Obsidian.bad : Obsidian.muted).lineLimit(2)
+                    }
+                    Spacer()
+                    if c.status == "error" { GhostButton(title: "Retry", icon: "arrow.clockwise") { Task { await model.reconnectMcp(c) } } }
+                    Button { Task { await model.removeMcp(c) } } label: { Image(systemName: "trash") }.buttonStyle(.plain).foregroundStyle(Obsidian.muted).help("Remove")
+                    Toggle("", isOn: Binding(get: { c.enabled }, set: { on in Task { await model.setMcp(c, on) } })).toggleStyle(.switch).labelsHidden().controlSize(.small)
+                }
+                if c.status == "connected" && !c.tools.isEmpty {
+                    FlowList(items: c.tools.map(\.title)) { title in
+                        let asks = c.tools.first { $0.title == title }?.asks ?? true
+                        HStack(spacing: 5) {
+                            Image(systemName: asks ? "hand.raised.fill" : "eye").font(.system(size: 9))
+                            Text(title).font(.system(size: 11, design: .monospaced))
+                        }
+                        .foregroundStyle(asks ? Fire.amber : Obsidian.muted)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Capsule().fill(Color.white.opacity(0.04)))
+                    }
+                }
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(0.03)))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Obsidian.rim, lineWidth: 1))
+        }
+    }
+}
+
+// MARK: - Backups
+
+struct BackupsPane: View {
+    @ObservedObject var model: ControlCenterModel
+
+    var body: some View {
+        if !model.backupReady {
+            Card(title: "Turn on backups", subtitle: "Choose a passphrase. Backups are locked with it, so nobody, not Apple, not anyone with your iCloud, can open them. Write it down: if it's lost, the backups can't be opened by anyone, including you.", label: "Set up") {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        FieldLabel(text: "Passphrase (12+ characters)")
+                        SecureField("A short sentence works well", text: $model.pass1).insetField()
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        FieldLabel(text: "Again")
+                        SecureField("Repeat it", text: $model.pass2).insetField()
+                    }
+                }
+                HStack {
+                    Spacer()
+                    PrimaryButton(title: "Turn on and back up now", icon: "lock.shield") { Task { await model.setupBackups() } }
+                }
+            }
+        } else {
+            Card(label: "Status") {
+                HStack(spacing: 14) {
+                    Image(systemName: model.backupError == nil ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                        .font(.system(size: 26)).foregroundStyle(model.backupError == nil ? AnyShapeStyle(Obsidian.metal) : AnyShapeStyle(Obsidian.bad))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(model.lastBackup.map { "Last backup \(Date(timeIntervalSince1970: $0 / 1000).formatted(date: .abbreviated, time: .shortened))" } ?? "No backup yet")
+                            .font(.system(size: 14, weight: .semibold)).foregroundStyle(Obsidian.text)
+                        Text(model.backupError.map { "Last attempt failed: \($0)" } ?? "Encrypted on this Mac before it's saved. Keeps the newest 14.")
+                            .font(.system(size: 12)).foregroundStyle(model.backupError == nil ? Obsidian.muted : Obsidian.bad)
+                    }
+                    Spacer()
+                    GhostButton(title: "Show", icon: "folder") { model.revealBackups() }
+                    PrimaryButton(title: "Back up now", icon: "arrow.up.doc") { Task { await model.backupNow() } }
+                }
+            }
+            Card(title: "Where and when", subtitle: "iCloud Drive keeps a copy off this Mac. The files are useless without your passphrase.", label: "Settings") {
+                VStack(alignment: .leading, spacing: 6) {
+                    FieldLabel(text: "Folder")
+                    TextField("", text: $model.backupDir).insetField(mono: true)
+                }
+                Toggle("Back up automatically every day", isOn: $model.backupNightly).toggleStyle(.switch).foregroundStyle(Obsidian.text)
+                HStack { Spacer(); PrimaryButton(title: "Save") { Task { await model.saveBackupSettings() } } }
+            }
+            Card(title: "Restoring", subtitle: "On this Mac or a new one: install Phoenix, stop the core (npm run phoenix -- autostart off), then run npm run phoenix -- backup restore <file> and enter your passphrase. Your current data is kept aside, never deleted.", label: "If you need it") {
+                EmptyView()
+            }
         }
     }
 }
@@ -896,6 +1051,14 @@ enum ControlCenterPreview {
         model.skills = [SkillRow(id: 1, name: "My usual Swiggy order", description: "Reorder my usual biryani on Swiggy", steps: "1. Open iPhone Mirroring → Swiggy\n2. Reorder from Meghana Foods\n3. Stop before payment", enabled: true)]
         model.selectSkill(model.skills.first)
         model.screenApps = ["WhatsApp", "iPhone Mirroring", "Safari", "Notes"]
+        model.backupReady = true
+        model.backupDir = "~/Library/Mobile Documents/com~apple~CloudDocs/Phoenix Backups"
+        model.lastBackup = now
+        model.mcp = [McpRow(id: "github", name: "GitHub", transport: "http", enabled: true, status: "connected", error: nil,
+                            tools: [McpToolRow(name: "a", title: "search_issues", asks: false), McpToolRow(name: "b", title: "list_notifications", asks: false),
+                                    McpToolRow(name: "c", title: "create_issue", asks: true), McpToolRow(name: "d", title: "add_comment", asks: true)])]
+        model.presets = [McpPreset(preset: "github", name: "GitHub", transport: "http", url: nil, command: nil, args: [], tokenEnv: nil, tokenHelp: ""),
+                         McpPreset(preset: "notion", name: "Notion", transport: "stdio", url: nil, command: nil, args: [], tokenEnv: nil, tokenHelp: "")]
         model.history = [HistoryRow(id: "h1", title: "WhatsApp Ankit that I'm running late", preview: "Sent it to Ankit.", updatedAt: now, turns: 2),
                          HistoryRow(id: "h2", title: "What does my day look like?", preview: "Two meetings and the gym at 7.", updatedAt: now - 86_400_000, turns: 1)]
         model.historyID = "h1"

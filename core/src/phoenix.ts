@@ -128,7 +128,7 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
     },
 
     close() {
-      db.close();
+      if (db.isOpen) db.close();
     },
   };
 }
