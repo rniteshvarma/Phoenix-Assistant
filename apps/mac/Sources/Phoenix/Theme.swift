@@ -21,6 +21,10 @@ private func rgb(_ r: Double, _ g: Double, _ b: Double) -> Color { Color(red: r,
 
 enum Theme {
     static let all: [ThemePalette] = [
+        // Crimson: oxblood surfaces, brick crimson, coral and salmon glows, cream highlights. The default.
+        ThemePalette(id: "crimson", name: "Crimson", deep: rgb(0.35, 0.12, 0.09), ember: rgb(0.72, 0.25, 0.18), flame: rgb(0.85, 0.46, 0.40),
+                     gold: rgb(0.91, 0.68, 0.62), core: rgb(1.0, 0.90, 0.84), amber: rgb(0.94, 0.56, 0.48),
+                     nsAccent: NSColor(red: 0.90, green: 0.25, blue: 0.18, alpha: 1)),
         // Molten gold: copper flowing into champagne. The default.
         ThemePalette(id: "phoenix", name: "Phoenix Gold", deep: rgb(0.42, 0.07, 0.04), ember: rgb(0.93, 0.46, 0.18), flame: rgb(0.98, 0.66, 0.30),
                      gold: rgb(1.0, 0.84, 0.56), core: rgb(1.0, 0.95, 0.84), amber: rgb(0.95, 0.78, 0.52),
@@ -51,7 +55,7 @@ enum Theme {
 
     static var current: ThemePalette {
         if let cached { return cached }
-        let id = UserDefaults.standard.string(forKey: "theme") ?? "phoenix"
+        let id = UserDefaults.standard.string(forKey: "theme") ?? "crimson"
         let found = all.first { $0.id == id } ?? all[0]
         cached = found
         return found
@@ -114,4 +118,28 @@ enum Persona {
         let n = nameAlternatives()
         return "\\b(\(n))[,.!?…]?\\s+(stop|quiet|enough|cancel|shut up|be quiet)\\b" + "|\\b(stop|quiet)[,.!?…]?\\s+(\(n))\\b"
     }
+}
+
+/// Surfaces and contrast that differ by theme. Crimson has warm oxblood surfaces and light-on-red
+/// buttons; the others sit on obsidian with dark text on metallic buttons.
+extension ThemePalette {
+    private var warm: Bool { id == "crimson" }
+
+    /// Window background.
+    var base: Color { warm ? rgb(0.19, 0.05, 0.045) : rgb(0.031, 0.035, 0.047) }
+    /// Sidebar and raised surfaces.
+    var raised: Color { warm ? rgb(0.15, 0.04, 0.038) : rgb(0.043, 0.047, 0.062) }
+    /// Summon Bar panel.
+    var panel: Color { warm ? rgb(0.20, 0.055, 0.05) : rgb(0.078, 0.082, 0.102) }
+    /// How strongly the background glows in the accent colors.
+    var glow: Double { warm ? 0.62 : 0.13 }
+    /// The vivid accent for highlights (underlines, active dots).
+    var highlight: Color { warm ? rgb(0.95, 0.19, 0.12) : ember }
+    /// Primary buttons and selected pills.
+    var buttonFill: LinearGradient {
+        warm ? LinearGradient(colors: [rgb(0.94, 0.33, 0.24), rgb(0.74, 0.20, 0.15)], startPoint: .top, endPoint: .bottom)
+             : LinearGradient(colors: [core, gold, flame, ember], startPoint: .top, endPoint: .bottom)
+    }
+    /// Text and icons on a primary button.
+    var onAccent: Color { warm ? .white : rgb(0.12, 0.07, 0.03) }
 }

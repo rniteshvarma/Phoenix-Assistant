@@ -5,12 +5,12 @@ import SwiftUI
 
 /// Neutrals for the Control Center: obsidian blacks, warm whites, hairlines that catch the light.
 enum Obsidian {
-    static let bg = Color(red: 0.031, green: 0.035, blue: 0.047)
-    static let sidebar = Color(red: 0.043, green: 0.047, blue: 0.062)
+    static var bg: Color { Theme.current.base }
+    static var sidebar: Color { Theme.current.raised }
     static let raised = Color(red: 0.075, green: 0.078, blue: 0.098)
     static let text = Color(red: 0.95, green: 0.94, blue: 0.92)
-    static let muted = Color(red: 0.60, green: 0.59, blue: 0.62)
-    static let faint = Color(red: 0.38, green: 0.38, blue: 0.42)
+    static let muted = Color.white.opacity(0.62)
+    static let faint = Color.white.opacity(0.38)
     static let hairline = Color.white.opacity(0.07)
     static let good = Color(red: 0.42, green: 0.86, blue: 0.64)
     static let bad = Color(red: 1.0, green: 0.42, blue: 0.45)
@@ -71,8 +71,12 @@ struct ObsidianBackdrop: View {
                 stride(from: 0.0, through: size.height, by: 28).forEach { y in path.move(to: CGPoint(x: 0, y: y)); path.addLine(to: CGPoint(x: size.width, y: y)) }
                 ctx.stroke(path, with: .color(Color.white.opacity(0.018)), lineWidth: 0.5)
             }
-            RadialGradient(colors: [Fire.ember.opacity(0.13), Fire.deep.opacity(0.05), .clear], center: .topLeading, startRadius: 0, endRadius: 620)
-            RadialGradient(colors: [Fire.gold.opacity(0.05), .clear], center: .bottomTrailing, startRadius: 0, endRadius: 500)
+            // Soft, out-of-focus glows in the theme colors.
+            RadialGradient(colors: [Fire.ember.opacity(Theme.current.glow), Fire.deep.opacity(Theme.current.glow * 0.4), .clear], center: .topLeading, startRadius: 0, endRadius: 680)
+            RadialGradient(colors: [Fire.flame.opacity(Theme.current.glow * 0.55), .clear], center: UnitPoint(x: 0.85, y: 0.25), startRadius: 0, endRadius: 420)
+            RadialGradient(colors: [Fire.gold.opacity(Theme.current.glow * 0.3), .clear], center: .bottomTrailing, startRadius: 0, endRadius: 520)
+            // Darken toward the bottom, like light falling off.
+            LinearGradient(colors: [.clear, Color.black.opacity(0.35)], startPoint: .center, endPoint: .bottom)
         }
         .ignoresSafeArea()
     }
@@ -145,9 +149,9 @@ struct PrimaryButton: View {
                 if let icon { Image(systemName: icon).font(.system(size: 11, weight: .bold)) }
                 Text(title).font(.system(size: 12.5, weight: .semibold))
             }
-            .foregroundStyle(Color(red: 0.12, green: 0.07, blue: 0.03))
+            .foregroundStyle(Theme.current.onAccent)
             .padding(.horizontal, 16).padding(.vertical, 8)
-            .background(Capsule().fill(Obsidian.metal))
+            .background(Capsule().fill(Theme.current.buttonFill))
             .overlay(Capsule().strokeBorder(Color.white.opacity(0.45), lineWidth: 0.6).blendMode(.overlay))
             .shadow(color: Fire.ember.opacity(0.45), radius: 10, y: 2)
         }
@@ -198,9 +202,9 @@ struct Pill: View {
                 if let count { Text("\(count)").font(.system(size: 10.5, weight: .semibold, design: .monospaced)).opacity(0.7) }
             }
             .font(.system(size: 12, weight: selected ? .semibold : .regular))
-            .foregroundStyle(selected ? Color(red: 0.12, green: 0.07, blue: 0.03) : Obsidian.muted)
+            .foregroundStyle(selected ? Theme.current.onAccent : Obsidian.muted)
             .padding(.horizontal, 11).padding(.vertical, 5.5)
-            .background(Capsule().fill(selected ? AnyShapeStyle(Obsidian.metal) : AnyShapeStyle(Color.white.opacity(0.045))))
+            .background(Capsule().fill(selected ? AnyShapeStyle(Theme.current.buttonFill) : AnyShapeStyle(Color.white.opacity(0.045))))
             .overlay(Capsule().strokeBorder(selected ? Color.clear : Color.white.opacity(0.08), lineWidth: 1))
         }
         .buttonStyle(.plain)
@@ -260,7 +264,7 @@ struct ControlCenterView: View {
             Text(model.section.rawValue).font(.system(size: 30, weight: .semibold)).tracking(-0.4).foregroundStyle(Obsidian.text)
             Text(model.section.subtitle).font(.system(size: 13)).foregroundStyle(Obsidian.muted)
                 .fixedSize(horizontal: false, vertical: true)
-            Rectangle().fill(LinearGradient(colors: [Fire.gold.opacity(0.55), Fire.ember.opacity(0.15), .clear], startPoint: .leading, endPoint: .trailing))
+            Rectangle().fill(LinearGradient(colors: [Theme.current.highlight.opacity(0.85), Fire.ember.opacity(0.2), .clear], startPoint: .leading, endPoint: .trailing))
                 .frame(height: 1).padding(.top, 6)
         }
     }

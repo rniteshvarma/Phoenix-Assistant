@@ -2,7 +2,7 @@ import SwiftUI
 
 /// "Ember" palette from the plan (§6.1).
 enum Ember {
-    static let panel = Color(red: 0.078, green: 0.082, blue: 0.102).opacity(0.95)
+    static var panel: Color { Theme.current.panel.opacity(0.95) }
     static let border = Color(red: 0.165, green: 0.172, blue: 0.2)
     static var ember: Color { Theme.current.ember }
     static var amber: Color { Theme.current.amber }
@@ -78,7 +78,10 @@ struct SummonView: View {
         .background(
             ZStack {
                 RoundedRectangle(cornerRadius: 16).fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: 16).fill(Color(red: 0.03, green: 0.034, blue: 0.045).opacity(0.86))
+                RoundedRectangle(cornerRadius: 16).fill(Theme.current.panel.opacity(0.88))
+                // Out-of-focus glows in the theme colors (strong for Crimson, subtle otherwise).
+                RadialGradient(colors: [Fire.ember.opacity(Theme.current.glow * 0.8), .clear], center: .topLeading, startRadius: 0, endRadius: 420)
+                RadialGradient(colors: [Fire.flame.opacity(Theme.current.glow * 0.45), .clear], center: .bottomTrailing, startRadius: 0, endRadius: 360)
                 DotGrid()
                 LinearGradient(colors: [Color.white.opacity(0.05), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.25))
                 EmberField(intensity: isActive ? 0.22 : 0.06, riseStartedAt: state.riseStartedAt, count: 26)
@@ -394,8 +397,8 @@ struct ApprovalCardView: View {
                         Label("Approve", systemImage: "touchid")
                             .font(.system(size: 13, weight: .semibold))
                             .padding(.horizontal, 14).padding(.vertical, 6)
-                            .background(RoundedRectangle(cornerRadius: 7).fill(Ember.ember))
-                            .foregroundStyle(.black)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(Theme.current.buttonFill))
+                            .foregroundStyle(Theme.current.onAccent)
                     }
                     .buttonStyle(.plain)
                     .keyboardShortcut(.return, modifiers: .command)

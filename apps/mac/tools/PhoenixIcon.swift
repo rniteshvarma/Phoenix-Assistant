@@ -1,5 +1,5 @@
 // Draws the Phoenix logo (app icon and in-app mark) with Core Graphics, so it can be
-// regenerated exactly. Usage: swift tools/PhoenixIcon.swift <out-dir> [concept]
+// regenerated exactly. Usage: swift tools/PhoenixIcon.swift <out-dir> [concept] [crimson|gold]
 import AppKit
 import CoreGraphics
 
@@ -10,6 +10,20 @@ func c(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat = 1) -> CGColor { 
 // Molten palette: garnet → ember → amber → champagne → white-hot.
 let garnet = c(0.45, 0.07, 0.05), ember = c(0.92, 0.33, 0.14), amber = c(0.97, 0.62, 0.24)
 let champagne = c(0.98, 0.86, 0.62), hot = c(1.0, 0.98, 0.92)
+
+/// Crimson palette (the default theme): oxblood tile, brick crimson → coral → salmon → cream.
+let crimson = CommandLine.arguments.count > 3 ? CommandLine.arguments[3] != "gold" : true
+struct Look {
+    let tileTop, tileBottom, glow, glowEdge, rim, shadow: CGColor
+    let metal: [CGColor]
+}
+let look = crimson
+    ? Look(tileTop: c(0.36, 0.10, 0.08), tileBottom: c(0.10, 0.03, 0.03), glow: c(0.95, 0.28, 0.18, 0.55), glowEdge: c(0.55, 0.10, 0.07, 0.28),
+           rim: c(1.0, 0.84, 0.76), shadow: c(0.95, 0.25, 0.16, 0.7),
+           metal: [c(0.40, 0.06, 0.04), c(0.72, 0.14, 0.10), c(0.90, 0.26, 0.18), c(0.96, 0.50, 0.40), c(1.0, 0.90, 0.84), c(0.98, 0.70, 0.60)])
+    : Look(tileTop: c(0.085, 0.075, 0.075), tileBottom: c(0.025, 0.025, 0.035), glow: c(0.95, 0.45, 0.16, 0.30), glowEdge: c(0.55, 0.12, 0.05, 0.16),
+           rim: c(0.98, 0.86, 0.62), shadow: c(0.95, 0.45, 0.15, 0.55),
+           metal: [c(0.42, 0.07, 0.04), c(0.80, 0.26, 0.09), c(0.96, 0.55, 0.20), c(1.0, 0.78, 0.42), c(1.0, 0.94, 0.80), c(0.99, 0.82, 0.52)])
 
 func gradient(_ colors: [CGColor], _ locs: [CGFloat]) -> CGGradient {
     CGGradient(colorsSpace: cs, colors: colors as CFArray, locations: locs)!
@@ -36,10 +50,10 @@ func drawBase(_ g: CGContext) {
     g.restoreGState()
     g.saveGState()
     g.addPath(shape); g.clip()
-    g.drawLinearGradient(gradient([c(0.085, 0.075, 0.075), c(0.025, 0.025, 0.035)], [0, 1]),
+    g.drawLinearGradient(gradient([look.tileTop, look.tileBottom], [0, 1]),
                          start: CGPoint(x: 512, y: 924), end: CGPoint(x: 512, y: 100), options: [])
     // Ember glow rising from below the mark
-    g.drawRadialGradient(gradient([c(0.95, 0.45, 0.16, 0.30), c(0.55, 0.12, 0.05, 0.16), c(0, 0, 0, 0)], [0, 0.5, 1]),
+    g.drawRadialGradient(gradient([look.glow, look.glowEdge, c(0, 0, 0, 0)], [0, 0.5, 1]),
                          startCenter: CGPoint(x: 512, y: 470), startRadius: 0, endCenter: CGPoint(x: 512, y: 470), endRadius: 470, options: [])
     // Corner vignette for depth
     g.drawRadialGradient(gradient([c(0, 0, 0, 0), c(0, 0, 0, 0.45)], [0.55, 1]),
@@ -59,7 +73,7 @@ func drawBase(_ g: CGContext) {
     g.saveGState()
     g.addPath(CGPath(roundedRect: body.insetBy(dx: 2, dy: 2), cornerWidth: 184, cornerHeight: 184, transform: nil))
     g.setLineWidth(4); g.replacePathWithStrokedPath(); g.clip()
-    g.drawLinearGradient(gradient([c(0.98, 0.86, 0.62, 0.55), c(0.98, 0.86, 0.62, 0.06)], [0, 1]),
+    g.drawLinearGradient(gradient([look.rim.copy(alpha: 0.55)!, look.rim.copy(alpha: 0.06)!], [0, 1]),
                          start: CGPoint(x: 512, y: 924), end: CGPoint(x: 512, y: 100), options: [])
     g.restoreGState()
 }
@@ -170,13 +184,12 @@ func conceptB(_ g: CGContext) {
 /// Metallic molten fill: deep garnet → copper → gold → champagne, with a bright specular band.
 func fillMetal(_ g: CGContext, _ path: CGPath, _ y0: CGFloat, _ y1: CGFloat, glow: CGFloat = 22) {
     g.saveGState()
-    g.setShadow(offset: .zero, blur: glow, color: c(0.95, 0.45, 0.15, 0.55))
+    g.setShadow(offset: .zero, blur: glow, color: look.shadow)
     g.addPath(path); g.setFillColor(c(0.8, 0.35, 0.12)); g.fillPath()
     g.restoreGState()
     g.saveGState()
     g.addPath(path); g.clip()
-    g.drawLinearGradient(gradient([c(0.42, 0.07, 0.04), c(0.80, 0.26, 0.09), c(0.96, 0.55, 0.20), c(1.0, 0.78, 0.42),
-                                   c(1.0, 0.94, 0.80), c(0.99, 0.82, 0.52)], [0, 0.14, 0.34, 0.58, 0.8, 1]),
+    g.drawLinearGradient(gradient(look.metal, [0, 0.14, 0.34, 0.58, 0.8, 1]),
                          start: CGPoint(x: 512, y: y0), end: CGPoint(x: 512, y: y1), options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
     // Diagonal sheen
     g.setBlendMode(.screen)
