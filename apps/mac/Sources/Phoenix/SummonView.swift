@@ -371,16 +371,20 @@ struct ApprovalCardView: View {
                     .font(.system(size: 11.5, weight: .medium))
                     .foregroundStyle(Ember.red)
             }
-            ScrollView {
-                Text(card.payload)
-                    .font(.system(size: 11.5, design: .monospaced))
-                    .foregroundStyle(Ember.text.opacity(0.85))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            if card.tool == "booking_review", let booking = BookingInfo(json: card.payload) {
+                BookingCardView(info: booking)
+            } else {
+                ScrollView {
+                    Text(card.payload)
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(Ember.text.opacity(0.85))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 170)
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.35)))
             }
-            .frame(maxHeight: 170)
-            .padding(10)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.35)))
             Text("payload \(String(card.payloadHash.prefix(12)))… · approving uses Touch ID")
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(Ember.dim)

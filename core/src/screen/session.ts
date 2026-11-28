@@ -44,6 +44,7 @@ export interface ScreenSessionDeps {
   signal?: AbortSignal;
   maxSteps?: number;
   log?: (line: string) => void;
+  onUsage?: (model: string, usage: import("../store/usage.ts").Usage) => void;
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -57,6 +58,8 @@ export const DEFAULT_SCREEN_APPS = ["WhatsApp", "iPhone Mirroring", "Safari", "G
 const MESSAGING_APPS = /whatsapp|messages|telegram|signal|slack|teams|discord|messenger|instagram|iphone mirroring/i;
 
 const SEND_KEYS = /^(return|enter|kp_enter)$/i;
+/** Details Phoenix never types into any app, even with approval. */
+export const NEVER_TYPE = new Set(["CARD", "CVV", "OTP", "PASSWORD", "LOGIN", "BANK_ACCOUNT", "UPI", "API_KEY", "PRIVATE_KEY"]);
 const CONFIRM_STEPS = 3;
 
 export const SCREEN_TOOLS: Anthropic.Beta.BetaTool[] = [
@@ -146,6 +149,7 @@ export async function runScreenSession(app: string, goal: string, deps: ScreenSe
     for (let step = 0; step < maxSteps; step += 1) {
       if (signal?.aborted) throw new StopSession("Stopped.");
       const turn = await model.next({ system, messages, tools: SCREEN_TOOLS });
+      if (turn.usage) deps.onUsage?.(turn.model ?? model.name, turn.usage);
       if (turn.refusal) return turn.refusal;
       messages.push({ role: "assistant", content: turn.content });
       const uses = turn.content.filter((b) => b.type === "tool_use") as unknown as ToolUse[];
@@ -219,6 +223,14 @@ export async function runScreenSession(app: string, goal: string, deps: ScreenSe
       }
       case "type": {
         let text = String(input.text ?? "");
+        // Never on a screen: card numbers, CVVs, one-time codes, passwords, bank/UPI details, keys.
+        // Paying and signing in are always left to the user, whatever the instructions.
+        const placeholderKinds = (text.match(PLACEHOLDER) ?? []).map((t) => t.slice(2, t.lastIndexOf("_")));
+        const typedKinds = detect(text).map((f) => f.kind as string);
+        const forbidden = [...placeholderKinds, ...typedKinds].find((k) => NEVER_TYPE.has(k));
+        if (forbidden) {
+          return reply(`Not typed: Phoenix never enters ${KIND_LABEL[forbidden as Kind] ?? "that kind of detail"} on a screen. Stop and tell the user it's ready for them to enter it.`, true);
+        }
         const tokens = [...new Set(text.match(PLACEHOLDER) ?? [])];
         const fresh = tokens.filter((t) => !approvedTokens.has(t));
         if (fresh.length) {

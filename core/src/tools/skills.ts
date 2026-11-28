@@ -2,6 +2,7 @@ import { z } from "zod";
 import { Tier } from "../policy/tiers.ts";
 import { sensitiveReason } from "../store/memory.ts";
 import { defineTool } from "./types.ts";
+import { BUILTIN_SKILLS } from "../skills/builtin.ts";
 
 export const skillRead = defineTool({
   name: "skill_read",
@@ -10,9 +11,9 @@ export const skillRead = defineTool({
   schema: z.strictObject({ name: z.string().min(1).max(100) }),
   describe: (i) => `Read skill "${i.name}"`,
   async run(i, ctx) {
-    const skill = ctx.skills.byName(i.name);
+    const skill = ctx.skills.byName(i.name) ?? BUILTIN_SKILLS.find((b) => b.name.toLowerCase() === i.name.trim().toLowerCase());
     if (!skill) throw new Error(`no skill called "${i.name}"`);
-    if (!skill.enabled) throw new Error(`the skill "${skill.name}" is turned off`);
+    if ("enabled" in skill && !skill.enabled) throw new Error(`the skill "${skill.name}" is turned off`);
     return `Skill "${skill.name}" — ${skill.description}\nSteps:\n${skill.steps}`;
   },
 });

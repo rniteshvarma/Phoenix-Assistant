@@ -39,6 +39,7 @@ export const remindersList = defineTool({
 
 export const remindersAdd = defineTool({
   name: "reminders_add",
+  escalateWhenTainted: true,
   tier: Tier.Prepare,
   description: "Add a reminder in Apple Reminders, optionally with a due date/time and list.",
   schema: z.strictObject({
@@ -64,6 +65,7 @@ export const remindersComplete = defineTool({
 
 export const calendarAddEvent = defineTool({
   name: "calendar_add_event",
+  escalateWhenTainted: true,
   tier: Tier.Prepare,
   description: "Add an event to the user's own calendar (no invitations are sent).",
   schema: z
@@ -111,6 +113,7 @@ export const messagesSend = defineTool({
 
 export const appleNotesCreate = defineTool({
   name: "apple_notes_create",
+  escalateWhenTainted: true,
   tier: Tier.Prepare,
   description: "Create a note in the user's Apple Notes app (syncs to their iPhone through their own iCloud).",
   schema: z.strictObject({ title: z.string().min(1).max(200), body: z.string().max(20_000) }),
@@ -120,6 +123,7 @@ export const appleNotesCreate = defineTool({
 
 export const appOpen = defineTool({
   name: "app_open",
+  escalateWhenTainted: true,
   tier: Tier.Prepare,
   description: "Open an app on the Mac by name (e.g. 'Spotify', 'Calendar') or a web page (https:// URL) in the default browser.",
   schema: z.strictObject({
@@ -139,6 +143,7 @@ const FOLDERS = ["Documents", "Desktop", "Downloads"] as const;
 
 export const filesMove = defineTool({
   name: "files_move",
+  escalateWhenTainted: true,
   tier: Tier.Prepare,
   description: "Move a file within Documents, Desktop or Downloads (never overwrites an existing file).",
   schema: z.strictObject({

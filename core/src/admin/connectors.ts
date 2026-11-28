@@ -23,6 +23,8 @@ export const CONNECTORS: Connector[] = [
   { id: "apps", name: "Open apps & websites", description: "Open an app or a web page.", tools: ["app_open"], onMac: true },
   { id: "files", name: "Files & documents", description: "Read, move and trash files in Documents, Desktop and Downloads.", tools: ["documents_list", "document_read", "files_move", "files_trash"] },
   { id: "shortcuts", name: "Shortcuts", description: "Run your Shortcuts (always with your OK).", tools: ["shortcuts_list", "shortcuts_run"] },
+  { id: "media", name: "Images & video", description: "Create images on-device, record the screen, trim and caption videos.",
+    tools: ["image_create", "screen_record_start", "screen_record_stop", "video_trim", "video_captions", "video_remove_silence", "media_transcribe"], onMac: true },
   { id: "screen", name: "Screen control", description: "Operate allowed apps on screen, incl. iPhone Mirroring.", tools: ["screen_act"], onMac: true },
   { id: "email", name: "Email", description: "Drafts go to a local outbox for now.", tools: ["outbox_send"], status: "Gmail sign-in on hold" },
   { id: "phoenix_notes", name: "Phoenix notes", description: "Private notes kept by Phoenix on this Mac.", tools: ["notes_save", "notes_list", "notes_read"] },

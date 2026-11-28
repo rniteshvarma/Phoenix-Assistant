@@ -306,6 +306,7 @@ Each phase ends with an **exit test** you can demo. Don't start the next phase u
 - **Exit test:** a 15-task benchmark (e.g. "add milk to my Reminders", "find the PDF Ankit sent last week and attach it to a reply", "order my usual from Swiggy — stop at checkout") ≥ 80% success; 0 unapproved T2/T3 actions.
 
 ### Phase 5 — Creative studio (Weeks 16–17)
+> **Progress (28 Nov 2026):** on-device images (Image Playground), screen recording (ScreenCaptureKit), trim / silence removal / on-device captions (AVFoundation + Speech). AI video generation and music beds not done.
 - Image generation ("make a Diwali greeting card with my family photo"), with style presets.
 - Screen recording / camera recording on command ("record my screen while I demo this, trim the silence, add captions").
 - Video editing pipeline (ffmpeg: trim, captions, music bed, export); optional AI video generation.
@@ -313,6 +314,7 @@ Each phase ends with an **exit test** you can demo. Don't start the next phase u
 - **Exit test:** voice-command a 60-second captioned screen demo, ready to share, in < 5 minutes of your time.
 
 ### Phase 6 — Travel & payments (Weeks 18–21)
+> **Progress (28 Nov 2026):** Booking Approval Card + flight/hotel/train/cab playbooks via web search and screen control, stopping at payment. Flight APIs and virtual cards not done.
 - Flights via API (search, compare, hold, book); hotels and trains via browser computer use (Booking.com/MakeMyTrip/IRCTC), stopping at the payment page.
 - **Booking Approval Card:** itinerary, price breakdown, cancellation policy, which card, total in ₹.
 - Payment approach for v1: Phoenix fills everything up to payment; **you complete OTP / UPI PIN** (RBI's additional-factor rule makes this mandatory anyway, and it's the right HITL boundary). Optional later: virtual cards with per-transaction limits.
@@ -327,6 +329,7 @@ Each phase ends with an **exit test** you can demo. Don't start the next phase u
 - **Exit test:** over one week, ≥ 70% of proactive suggestions rated useful; < 3 pings/day on average.
 
 ### Phase 8 — Hardening (Weeks 24–26)
+> **Progress (28 Nov 2026):** taint-based approvals, hidden-character stripping, never-type list, 16-case injection eval (`phoenix eval injection`), encrypted backups. Cost tuning and a 100+ task eval not done.
 - Eval suite in CI: 100+ task scenarios, 50+ prompt-injection cases (emails, web pages, PDFs, calendar invites, iMessages).
 - Cost tuning: prompt caching for system prompts/tool definitions, route more to Haiku, screenshot downscaling, effort levels per route.
 - Backups (encrypted, to an external drive or iCloud Drive as an encrypted blob), disaster recovery test.

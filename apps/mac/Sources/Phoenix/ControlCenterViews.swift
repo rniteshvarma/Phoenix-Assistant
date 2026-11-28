@@ -896,6 +896,22 @@ struct KeysPane: View {
     @ObservedObject var model: ControlCenterModel
 
     var body: some View {
+        if !model.usage.isEmpty {
+            Card(title: "What Phoenix costs", subtitle: "Estimated from Phoenix's own token counts at list prices; your Anthropic bill is the source of truth. Cached input costs about a tenth.", label: "Usage") {
+                HStack(spacing: 12) {
+                    ForEach(model.usage, id: \.0) { u in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HUDLabel(text: u.0, color: Obsidian.muted)
+                            Text(String(format: "$%.2f", u.1)).font(.system(size: 22, weight: .semibold, design: .rounded)).foregroundStyle(Obsidian.text)
+                            Text("\(u.2) model calls · \(Int((u.3 * 100).rounded()))% cached").font(.system(size: 11.5)).foregroundStyle(Obsidian.muted)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.black.opacity(0.25)))
+                    }
+                }
+            }
+        }
         ForEach(model.keys) { k in
             Card(title: k.label, subtitle: subtitle(k), label: k.name == "anthropic" ? "Required" : "Optional") {
                 HStack(spacing: 10) {

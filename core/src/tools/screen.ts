@@ -47,6 +47,7 @@ export const screenAct = defineTool({
       model,
       confirm: ctx.session.confirm,
       signal: ctx.session.signal,
+      onUsage: (m, u) => ctx.session?.recordUsage?.("screen", m, u),
     });
   },
 });

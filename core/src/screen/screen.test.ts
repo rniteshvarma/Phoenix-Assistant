@@ -226,3 +226,25 @@ test("on-screen text under a click: payment buttons never pressed, final buttons
     done();
   }
 });
+
+test("card numbers, OTPs and passwords are never typed on a screen, even as placeholders", async () => {
+  const { phoenix, done } = setup();
+  try {
+    const calls = fakeScreen(phoenix);
+    const card = phoenix.vault.protect("card 4111 1111 1111 1111").text.match(/\[\[CARD_\d+\]\]/)![0];
+    const model = new ScriptedScreen([
+      turn(act("type", { text: card })),
+      turn(act("type", { text: "4111111111111111" })),
+      turn(act("type", { text: "OTP is 482913" })),
+    ]);
+    let asked = 0;
+    await runScreenSession("Safari", "Book the flight", {
+      devices: phoenix.devices, vault: phoenix.vault, model, confirm: async () => (asked++, true),
+    });
+    for (const i of [0, 1, 2]) assert.match(JSON.stringify(model.results(i)), /never enters/);
+    assert.equal(asked, 0, "not even offered for approval");
+    assert.equal(calls.filter((c) => c.input?.name === "type").length, 0);
+  } finally {
+    done();
+  }
+});

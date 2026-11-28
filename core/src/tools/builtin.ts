@@ -7,6 +7,8 @@ import { documentRead, documentsList } from "./documents.ts";
 import { MAC_TOOLS } from "./mac.ts";
 import { screenAct } from "./screen.ts";
 import { skillRead, skillSave } from "./skills.ts";
+import { bookingReview } from "./travel.ts";
+import { MEDIA_TOOLS } from "./media.ts";
 import { memoryForget, memoryRemember, memorySearch } from "./memory.ts";
 import { defineTool, type Tool } from "./types.ts";
 
@@ -115,6 +117,8 @@ export const BUILTIN_TOOLS: Tool[] = [
   screenAct,
   skillRead,
   skillSave,
+  bookingReview,
+  ...MEDIA_TOOLS,
   notesSave,
   notesList,
   notesRead,

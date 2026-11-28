@@ -1,4 +1,5 @@
 import { isStyleSample, type MemoryItem, type MemoryStore } from "../store/memory.ts";
+import type { MemoryVectors } from "./embed.ts";
 
 /**
  * Choosing what Phoenix remembers *for this request*, on this Mac, without a model call:
@@ -39,31 +40,64 @@ function stem(t: string): string {
   return t;
 }
 
-/** BM25 ranking of `items` against `query`. Pure. */
-export function rank(query: string, items: readonly MemoryItem[], limit = 8): MemoryItem[] {
+/** BM25 score of each item against the query (0 = no shared words). Episodes fade with age. Pure. */
+export function bm25(query: string, items: readonly MemoryItem[]): number[] {
   const q = [...new Set(tokens(query))];
-  if (q.length === 0 || items.length === 0) return [];
+  if (q.length === 0 || items.length === 0) return items.map(() => 0);
   const docs = items.map((m) => tokens(`${m.subject ?? ""} ${m.subject ?? ""} ${m.text}`));
   const avg = docs.reduce((s, d) => s + d.length, 0) / docs.length || 1;
   const df = new Map<string, number>();
   for (const d of docs) for (const t of new Set(d)) df.set(t, (df.get(t) ?? 0) + 1);
   const N = docs.length, k1 = 1.2, b = 0.75;
-  const now = Date.now();
+  return items.map((m, i) => {
+    const d = docs[i]!;
+    let score = 0;
+    for (const t of q) {
+      const f = d.filter((x) => x === t).length;
+      if (!f) continue;
+      const idf = Math.log(1 + (N - df.get(t)! + 0.5) / (df.get(t)! + 0.5));
+      score += idf * ((f * (k1 + 1)) / (f + k1 * (1 - b + (b * d.length) / avg)));
+    }
+    return score * recency(m);
+  });
+}
+
+function recency(m: MemoryItem): number {
+  return m.kind === "episode" ? 1 / (1 + (Date.now() - m.createdAt) / (14 * 86_400_000)) : 1;
+}
+
+/** BM25 ranking of `items` against `query`. Pure. */
+export function rank(query: string, items: readonly MemoryItem[], limit = 8): MemoryItem[] {
+  const scores = bm25(query, items);
+  return items
+    .map((m, i) => ({ m, score: scores[i]! }))
+    .filter((x) => x.score > 0.2)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((x) => x.m);
+}
+
+/** Meaning vectors for one request (filled in by recallSmart; absent → keywords only). */
+export interface Semantic {
+  query: number[];
+  items: Map<number, number[]>;
+  pages: Map<string, number[]>;
+}
+
+const dot = (a: readonly number[], b: readonly number[]) => a.reduce((s, x, i) => s + x * b[i]!, 0);
+
+/** Blend of meaning and keywords: meaning finds "mother" for "Amma", keywords keep exact names sharp. Pure. */
+export function hybridRank(query: string, items: readonly MemoryItem[], sem: Semantic, limit = 8): MemoryItem[] {
+  const kw = bm25(query, items);
+  const top = Math.max(...kw, 1e-9);
   return items
     .map((m, i) => {
-      const d = docs[i]!;
-      let score = 0;
-      for (const t of q) {
-        const f = d.filter((x) => x === t).length;
-        if (!f) continue;
-        const idf = Math.log(1 + (N - df.get(t)! + 0.5) / (df.get(t)! + 0.5));
-        score += idf * ((f * (k1 + 1)) / (f + k1 * (1 - b + (b * d.length) / avg)));
-      }
-      // Older episodes matter less.
-      if (m.kind === "episode") score *= 1 / (1 + (now - m.createdAt) / (14 * 86_400_000));
-      return { m, score };
+      const v = sem.items.get(m.id);
+      const meaning = v ? dot(sem.query, v) * recency(m) : 0;
+      return { m, meaning, kw: kw[i]!, score: 0.65 * meaning + 0.35 * (kw[i]! / top) };
     })
-    .filter((x) => x.score > 0.2)
+    // A real meaning match, or a strong keyword match that also means something close.
+    .filter((x) => x.meaning >= 0.32 || (x.kw / top >= 0.5 && x.meaning >= 0.15))
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map((x) => x.m);
@@ -82,7 +116,7 @@ function mentions(text: string, subject: string): boolean {
 const REFERS_BACK = /\b(yesterday|earlier|last (time|week|night)|before|again|follow ?up|that (one|thing|email|message)|remind me what|what did (i|we))\b/i;
 const WRITING = /\b(text|message|msg|whatsapp|imessage|email|mail|reply|respond|draft|write|send|tell)\b/i;
 
-export function recall(store: MemoryStore, request: string): Recall {
+export function recall(store: MemoryStore, request: string, sem?: Semantic): Recall {
   const all = store.list();
   const profile = all.filter((m) => m.kind === "profile");
 
@@ -93,12 +127,24 @@ export function recall(store: MemoryStore, request: string): Recall {
       pages.set(m.subject, [...(pages.get(m.subject) ?? []), m]);
     }
   }
+  // By meaning too: "call my mother" brings the "Mom (Amma)" page (best 3, only clear matches).
+  if (sem) {
+    const extra = [...sem.pages]
+      .filter(([subject]) => !pages.has(subject))
+      .map(([subject, v]) => ({ subject, score: dot(sem.query, v) }))
+      .filter((x) => x.score >= 0.45)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+    for (const { subject } of extra) {
+      pages.set(subject, all.filter((m) => (m.kind === "person" || m.kind === "project") && m.subject === subject));
+    }
+  }
   const people = [...pages].map(([subject, items]) => ({ subject, items: items.slice(-10) }));
   const shown = new Set([...profile, ...people.flatMap((p) => p.items)].map((m) => m.id));
 
   // Style notes come only with writing requests, in their own section.
   const pool = all.filter((m) => !shown.has(m.id) && m.kind !== "profile" && m.kind !== "style" && m.kind !== "local");
-  const relevant = rank(request, pool, 8);
+  const relevant = sem ? hybridRank(request, pool, sem, 8) : rank(request, pool, 8);
   if (REFERS_BACK.test(request)) {
     for (const e of all.filter((m) => m.kind === "episode").slice(-3)) if (!relevant.includes(e)) relevant.push(e);
   }
@@ -157,4 +203,35 @@ export function matchSkill<T extends { id: number; name: string; description: st
   const items = skills.map((s) => ({ id: s.id, kind: "fact" as const, subject: s.name, text: s.description, createdAt: 0 }));
   const best = rank(request, items, 1)[0];
   return best && skills.find((s) => s.id === best.id);
+}
+
+let warned = false;
+
+/** Recall with meaning search when the on-device model is available; keywords otherwise. */
+export async function recallSmart(store: MemoryStore, request: string, vectors?: MemoryVectors): Promise<Recall> {
+  if (!vectors) return recall(store, request);
+  try {
+    const all = store.list().filter((m) => m.kind !== "local" && m.kind !== "profile" && !(m.kind === "style"));
+    const itemText = (m: MemoryItem) => `${m.subject ? `${m.subject}: ` : ""}${m.text}`.slice(0, 500);
+    const groups = new Map<string, MemoryItem[]>();
+    for (const m of all) if ((m.kind === "person" || m.kind === "project") && m.subject) groups.set(m.subject, [...(groups.get(m.subject) ?? []), m]);
+    const pageText = (subject: string, items: MemoryItem[]) => `${subject}: ${items.map((m) => m.text).join(" ")}`.slice(0, 600);
+    const [query, itemVecs, pageVecs] = await Promise.all([
+      vectors.query(request),
+      vectors.vectors(all.map(itemText)),
+      vectors.vectors([...groups].map(([s, items]) => pageText(s, items))),
+    ]);
+    return recall(store, request, {
+      query,
+      items: new Map(all.map((m, i) => [m.id, itemVecs[i]!])),
+      pages: new Map([...groups.keys()].map((s, i) => [s, pageVecs[i]!])),
+    });
+  } catch (err) {
+    // Model missing or failed: keywords still work. Say so once, so a silent fallback can't hide a bug.
+    if (!warned) {
+      warned = true;
+      process.stderr.write(`[phoenix] meaning search unavailable, using keywords: ${err instanceof Error ? err.message : String(err)}\n`);
+    }
+    return recall(store, request);
+  }
 }

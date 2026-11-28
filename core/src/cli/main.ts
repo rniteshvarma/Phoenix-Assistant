@@ -21,6 +21,8 @@ import { scanDocument } from "../privacy/documents.ts";
 import { ProactiveScheduler } from "../proactive/scheduler.ts";
 import { backupCommand } from "./backupCommand.ts";
 import { McpHub } from "../mcp/hub.ts";
+import { CASES, runInjectionEval } from "../evals/injection.ts";
+import { cacheHitRate } from "../store/usage.ts";
 import { backupDue, backupSettings, createBackup, updateBackupSettings } from "../backup/backup.ts";
 import { loadMasterKey } from "../security/keys.ts";
 import { sensitiveReason, type MemoryItem } from "../store/memory.ts";
@@ -45,6 +47,8 @@ ${c.ember("Phoenix")} — CLI
   phoenix proactive brief HH:MM [daily|weekdays]   Set the morning briefing time
   phoenix proactive quiet HH:MM-HH:MM               Set quiet hours (no nudges)
   phoenix proactive lead <minutes>                  Nudge this long before meetings
+  phoenix usage                  Tokens and estimated cost, last 7 days
+  phoenix eval injection         Test against hidden instructions (real model, sandboxed; uses API credits)
   phoenix backup                 Encrypted backups: status
   phoenix backup setup           Choose a passphrase and make the first backup
   phoenix backup now             Back up right now
@@ -110,6 +114,10 @@ async function main(argv: string[]): Promise<number> {
         return screenCommand(phoenix, rest);
       case "backup":
         return await backupCommand(phoenix, rest);
+      case "eval":
+        return await evalCommand(rest);
+      case "usage":
+        return usageCommand(phoenix);
       default: {
         const request = args.join(" ").trim();
         if (!request) {
@@ -125,11 +133,14 @@ async function main(argv: string[]): Promise<number> {
 }
 
 /** Returns a model factory, or prints why Claude can't be used and returns null. */
-function modelFactory(offline: boolean, opts: { quiet?: boolean } = {}): ((request: string) => ModelClient) | null {
+/** Makes the model for a request; simple read-only jobs (briefings) can ask for low effort. */
+type ModelFactory = (request: string, opts?: { effort?: "low" | "medium" | "high" }) => ModelClient;
+
+function modelFactory(offline: boolean, opts: { quiet?: boolean } = {}): ModelFactory | null {
   if (offline) return (request) => new ScriptedModel(demoScript(request));
   const s = SECRETS.anthropic;
   const key = findSecret(s.env, s.service);
-  if (opts.quiet) return key && !checkApiKey(key.value) ? ((client) => () => new ClaudeModel(client))(new Anthropic({ apiKey: key.value })) : null;
+  if (opts.quiet) return key && !checkApiKey(key.value) ? ((client): ModelFactory => (_r, o) => new ClaudeModel(client, o))(new Anthropic({ apiKey: key.value })) : null;
   if (!key) {
     process.stderr.write(
       [
@@ -151,7 +162,7 @@ function modelFactory(offline: boolean, opts: { quiet?: boolean } = {}): ((reque
     return null;
   }
   const client = new Anthropic({ apiKey: key.value });
-  return () => new ClaudeModel(client);
+  return (_r, o) => new ClaudeModel(client, o);
 }
 
 /** `phoenix key …` — keep API keys in the macOS Keychain instead of the terminal. */
@@ -242,6 +253,60 @@ export function importMemories(phoenix: Phoenix, data: unknown): { added: number
     }
   }
   return { added, skipped };
+}
+
+/** `phoenix usage`: tokens and estimated cost per day and route, from Phoenix's own counts. */
+function usageCommand(phoenix: Phoenix): number {
+  const rows = phoenix.usage.recent(7);
+  const out = (s: string) => process.stdout.write(s);
+  if (rows.length === 0) {
+    out(`\n  ${c.dim("No usage recorded yet (counting started with this version).")}\n\n`);
+    return 0;
+  }
+  const usd = (n: number) => `$${n.toFixed(n < 1 ? 3 : 2)}`;
+  const k = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
+  out(`\n  ${c.ember("Usage, last 7 days")} ${c.dim("(estimated at list prices; your Anthropic bill is the source of truth)")}\n\n`);
+  out(`  ${c.dim("day         route      calls   input  cached   written  output     cost")}\n`);
+  for (const r of rows) {
+    out(`  ${r.day}  ${r.route.padEnd(9)} ${String(r.calls).padStart(5)} ${k(r.input).padStart(7)} ${k(r.cacheRead).padStart(7)} ${k(r.cacheWrite).padStart(9)} ${k(r.output).padStart(7)} ${usd(r.cost).padStart(8)}\n`);
+  }
+  const total = rows.reduce((s, r) => s + r.cost, 0);
+  out(`\n  ${c.bold(`Total ${usd(total)}`)} · ${Math.round(cacheHitRate(rows) * 100)}% of input read from cache\n\n`);
+  return 0;
+}
+
+/** `phoenix eval injection [--only id,id]`: run the prompt-injection suite against the real model. */
+async function evalCommand(args: string[]): Promise<number> {
+  if (args[0] !== "injection") {
+    process.stderr.write("  Usage: phoenix eval injection [--only case-id,case-id]\n");
+    return 2;
+  }
+  const make = modelFactory(false);
+  if (!make) return 2;
+  const onlyIdx = args.indexOf("--only");
+  const only = onlyIdx >= 0 ? new Set((args[onlyIdx + 1] ?? "").split(",")) : null;
+  const cases = only ? CASES.filter((c) => only.has(c.id)) : CASES;
+  process.stdout.write(`\n  Running ${cases.length} injection cases against Claude in a throwaway sandbox (your data isn't used)…\n\n`);
+  const results = await runInjectionEval(() => make("eval"), {
+    cases,
+    log: (line) => process.stdout.write(`  ${line.startsWith("PASS") ? c.green(line) : c.red(line)}\n`),
+  });
+  const passed = results.filter((r) => r.pass).length;
+  const warned = results.filter((r) => r.pass && r.warned).length;
+  process.stdout.write(`\n  ${passed}/${results.length} passed · ${warned} also warned you about the hidden instructions\n`);
+  for (const r of results.filter((x) => !x.pass)) {
+    process.stdout.write(`\n  ${c.red(r.id)} (${r.source}, ${r.technique})\n`);
+    if (r.error) process.stdout.write(`    error: ${r.error}\n`);
+    for (const p of r.proposed) process.stdout.write(`    proposed: ${p}\n`);
+    for (const p of r.planted) process.stdout.write(`    planted: ${p}\n`);
+    if (r.leakedCanary) process.stdout.write("    reply contained the attacker's canary\n");
+  }
+  const dir = path.join(os.homedir(), "Library", "Application Support", "Phoenix", "evals");
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `injection-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+  fs.writeFileSync(file, JSON.stringify(results, null, 2), { mode: 0o600 });
+  process.stdout.write(`\n  Full results: ${file}\n\n`);
+  return passed === results.length ? 0 : 1;
 }
 
 /** `phoenix screen [allow|deny] "App"` — the apps screen control may operate. */
@@ -555,10 +620,10 @@ async function serve(phoenix: Phoenix, offline: boolean): Promise<number> {
   // The key can be added or replaced from the Control Center while the core runs.
   let factory = modelFactory(offline, { quiet: !offline });
   if (!factory && !offline) process.stdout.write(`  ${c.amber("!")} No Anthropic key yet: add it in Phoenix Control Center › API Keys.\n`);
-  const makeModel = (request: string): ModelClient => {
+  const makeModel = (request: string, o?: { effort?: "low" | "medium" | "high" }): ModelClient => {
     factory ??= modelFactory(offline, { quiet: true });
     if (!factory) throw new Error("No Anthropic API key saved yet. Add it in Phoenix Control Center › API Keys.");
-    return factory(request);
+    return factory(request, o);
   };
   const token = loadOrCreateGatewayToken(phoenix.cfg);
   const port = Number(process.env.PHOENIX_PORT ?? 7788);
@@ -569,7 +634,8 @@ async function serve(phoenix: Phoenix, offline: boolean): Promise<number> {
     log: (line) => process.stdout.write(`  ${c.dim(new Date().toLocaleTimeString())} ${line}\n`),
   });
   const proactive = new ProactiveScheduler(phoenix, {
-    makeModel: () => makeModel("briefing"),
+    // Briefings only read and summarise: low effort is plenty and costs less.
+    makeModel: () => makeModel("briefing", { effort: "low" }),
     log: (line) => process.stdout.write(`  ${c.dim(new Date().toLocaleTimeString())} ${line}\n`),
   });
   if (speech instanceof KokoroSpeech) {

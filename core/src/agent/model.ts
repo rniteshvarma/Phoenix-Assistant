@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { MODELS } from "../config.ts";
+import { usageFrom, type Usage } from "../store/usage.ts";
 import { ClaudeScreenModel } from "../screen/model.ts";
 import type { ScreenModel } from "../screen/session.ts";
 
@@ -17,6 +18,10 @@ export interface ModelRequest {
 
 export interface ModelTurn {
   stopReason: string | null;
+  /** Tokens this call used (absent for scripted models). */
+  usage?: Usage;
+  /** Which model actually answered (a refusal fallback may differ). */
+  model?: string;
   /** Assistant content, appended unchanged to the conversation history. */
   content: Anthropic.Beta.BetaContentBlockParam[];
   refusal?: string;
@@ -36,9 +41,12 @@ const WEB_SEARCH = { type: "web_search_20260209", name: "web_search", max_uses: 
 export class ClaudeModel implements ModelClient {
   readonly name = MODELS.planner;
   #client: Anthropic;
+  #effort: "low" | "medium" | "high";
 
-  constructor(client = new Anthropic()) {
+  /** `effort`: medium for conversations; briefings and other simple read-only jobs use low. */
+  constructor(client = new Anthropic(), opts: { effort?: "low" | "medium" | "high" } = {}) {
     this.#client = client;
+    this.#effort = opts.effort ?? "medium";
   }
 
   screen(): ScreenModel {
@@ -50,7 +58,10 @@ export class ClaudeModel implements ModelClient {
       const stream = this.#client.beta.messages.stream({
         model: MODELS.planner,
         max_tokens: 64000,
-        output_config: { effort: "medium" },
+        output_config: { effort: this.#effort },
+        // Cache the conversation too: each step of a task re-reads the earlier steps at ~1/10 the price.
+        // (Explicit breakpoints below keep the unchanging system prompt and profile cached across tasks.)
+        cache_control: { type: "ephemeral" },
         // On a safety-classifier refusal, let the API re-run the turn on a fallback model.
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",
@@ -75,6 +86,8 @@ export class ClaudeModel implements ModelClient {
       }
       return {
         stopReason: response.stop_reason,
+        usage: usageFrom(response.usage),
+        model: response.model,
         content: response.content,
         refusal:
           response.stop_reason === "refusal"

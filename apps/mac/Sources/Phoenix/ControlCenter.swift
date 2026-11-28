@@ -116,6 +116,8 @@ final class ControlCenterModel: ObservableObject {
     @Published var connectors: [ConnectorRow] = []
     @Published var keys: [KeyRow] = []
     @Published var keyInputs: [String: String] = [:]
+    /// (label, cost USD, calls, cache rate) for today / 7 days / 30 days.
+    @Published var usage: [(String, Double, Int, Double)] = []
 
     // Backups
     @Published var backupReady = false
@@ -187,6 +189,12 @@ final class ControlCenterModel: ObservableObject {
             screenApps = o["screenApps"] as? [String] ?? []
             connectors = Self.parseConnectors(o["connectors"])
             applyBackup(o["backup"])
+            if let u = try? await call(["op": "usage"]) as? [String: Any] {
+                usage = [("Today", "today"), ("Last 7 days", "week"), ("Last 30 days", "month")].map { label, key in
+                    let r = u[key] as? [String: Any] ?? [:]
+                    return (label, (r["cost"] as? NSNumber)?.doubleValue ?? 0, (r["calls"] as? NSNumber)?.intValue ?? 0, (r["cacheRate"] as? NSNumber)?.doubleValue ?? 0)
+                }
+            }
             mcp = Self.parseMcp(o["mcp"])
             presets = (o["mcpPresets"] as? [[String: Any]] ?? []).map {
                 McpPreset(preset: $0["preset"] as? String ?? "", name: $0["name"] as? String ?? "", transport: $0["transport"] as? String ?? "http",

@@ -213,6 +213,7 @@ function toPhoenixTool(cfg: McpServerConfig, client: Client, t: McpTool): Tool |
     tier: readOnly ? Tier.Read : Tier.Act,
     untrustedOutput: true,
     leavesDevice: true,
+    escalateWhenTainted: false,
     parse: (input) =>
       input && typeof input === "object" && !Array.isArray(input) ? { ok: true, value: input } : { ok: false, error: "input must be an object" },
     describe: (input) => {

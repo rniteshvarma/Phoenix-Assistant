@@ -10,6 +10,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // `-mediaSelfTest <video>`: run the video edits on a test file, write a report next to it, quit.
+        if let file = UserDefaults.standard.string(forKey: "mediaSelfTest") {
+            Task { @MainActor in
+                let media = MediaActions()
+                var report = ""
+                for (tool, input) in [("video_trim", ["file": file, "start": 1, "end": 4] as [String: Any]),
+                                      ("video_remove_silence", ["file": file, "minSilence": 0.8]),
+                                      ("media_transcribe", ["file": file, "language": "en-US"]),
+                                      ("video_captions", ["file": file, "language": "en-US"])] {
+                    do { report += "OK \(tool): \(try await media.run(tool, input))\n" }
+                    catch { report += "FAIL \(tool): \(error.localizedDescription)\n" }
+                }
+                try? report.write(toFile: file + ".selftest.txt", atomically: true, encoding: .utf8)
+                NSApp.terminate(nil)
+            }
+            return
+        }
         // `-renderPreview <dir>`: draw the Control Center tabs to PNGs and quit (design check).
         if let dir = UserDefaults.standard.string(forKey: "renderPreview") {
             ControlCenterPreview.render(to: dir, state: AppState())

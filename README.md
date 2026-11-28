@@ -33,6 +33,42 @@ private connection as the Summon Bar (this Mac only, token-protected, browsers r
 | API Keys | Add, replace, test or remove keys (stored in the Keychain; used immediately, no restart) |
 | History | Read, search, copy or delete past conversations |
 
+## Images, recordings and video (Phase 5)
+
+All made on this Mac by the Phoenix app; results are new files in ~/Pictures/Phoenix or ~/Movies/Phoenix.
+
+| Say | What happens |
+|---|---|
+| "Make a Diwali greeting with my family photo" | Apple's on-device Image Playground (animation, illustration or sketch; never the cloud style) |
+| "Record my screen" … "stop" | ScreenCaptureKit recording with sound (auto-stops at 30 min) |
+| "Trim it to 0:10–1:20", "cut the silences", "add captions" | AVFoundation edits; captions transcribed on-device, burned in and saved as .srt |
+
+## Travel (Phase 6)
+
+Built-in playbooks: **Book a flight**, **Book a hotel**, **Book a train (IRCTC)**, **Book a cab**. Phoenix compares
+options, then shows a **Booking Approval Card** (itinerary, travellers, price breakdown in ₹, cancellation rules,
+where you'll pay). Approve and it fills everything up to the payment page, then stops. It never pays, never
+types card numbers, CVVs, OTPs, UPI PINs or passwords, never signs in or solves CAPTCHAs.
+
+## Hardening (Phase 8)
+
+- After reading outside content (email, web, documents, connectors), memory, calendar, link-opening and file
+  moves ask first, so hidden instructions can't plant anything on their own.
+- Invisible characters (zero-width, bidi overrides, Unicode tag smuggling) are stripped from outside content.
+- `npm run phoenix -- eval injection`: 16 attacks (fake system messages, authority claims, hidden tags, HTML
+  comments, base64, tag breakout, Hindi, tool-call spoofing, memory/skill poisoning) run against the real
+  model in a throwaway sandbox. Uses API credits.
+
+## Cost
+
+`npm run phoenix -- usage` (or Control Center › API Keys › Usage): tokens and estimated cost per day and
+route (chat, briefing, screen), and how much input was read from cache.
+
+- The system prompt, tools and profile are cached across requests; the conversation is cached too, so each
+  step of a multi-step task re-reads earlier steps at about a tenth of the price.
+- Briefings run at low effort (they only read and summarise); conversations at medium.
+- Memory recall sends only what's relevant, so most requests add a few hundred tokens of memory, not thousands.
+
 ## Backups
 
 Control Center › **Backups**, or:
@@ -71,6 +107,10 @@ the prompt); everything else is looked up on the Mac and only the few relevant i
 | Kept on Mac only | Work-confidential details (e.g. Varsun customer specifics) | Never: reserved for the on-device model |
 
 Phoenix learns as you talk (and says "I'll remember that"); it never stores passwords, PINs, OTPs, card or ID numbers.
+
+**Meaning search (on-device):** memories are matched by meaning as well as words, using a small embedding
+model (all-MiniLM-L6-v2, 23 MB) that runs on this Mac with no network. "mother" finds Amma, "after the gym" finds
+your fitness notes. Vectors are stored encrypted; if the model is missing, Phoenix falls back to keywords.
 
 ```bash
 npm run phoenix -- memory                                   # see everything, grouped

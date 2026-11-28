@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ModelTurn } from "../agent/model.ts";
 import { MODELS } from "../config.ts";
+import { usageFrom } from "../store/usage.ts";
 import type { ScreenModel, ScreenModelRequest } from "./session.ts";
 
 /** Claude Opus 5.5 with the computer use toolset (GA, no beta header needed for the toolset). */
@@ -28,6 +29,8 @@ export class ClaudeScreenModel implements ScreenModel {
     const response = await stream.finalMessage();
     return {
       stopReason: response.stop_reason,
+      usage: usageFrom(response.usage),
+      model: response.model,
       content: response.content as Anthropic.Beta.BetaContentBlockParam[],
       refusal:
         response.stop_reason === "refusal"

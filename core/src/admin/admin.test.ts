@@ -48,7 +48,7 @@ test("skills: saved from the Control Center, indexed with the profile, steps pul
       model: { name: "x", next: (req) => ((profile = req.profile), model.next(req)) },
       approver: new FakeApprover([]),
     });
-    assert.match(profile!, /<skills>\n- My usual Swiggy order: Reorder my usual biryani on Swiggy\n<\/skills>/);
+    assert.match(profile!, /<skills>\n- My usual Swiggy order: Reorder my usual biryani on Swiggy\n/);
     assert.ok(!profile!.includes("Weekly review"), "switched-off skills are left out");
     assert.match(context, /Meghana Foods/);
   } finally {
@@ -132,6 +132,33 @@ test("name and settings: renaming the assistant reaches the cached prompt; bad k
     assert.match(profile!, /named you "Agni"/);
     await assert.rejects(admin({ op: "keys.set", name: "anthropic", value: "not-an-anthropic-key" }), /doesn't look like an Anthropic key/);
     await assert.rejects(admin({ op: "settings.set", screenApps: ["WhatsApp", "HDFC Bank"] }), /never operates HDFC Bank/);
+  } finally {
+    done();
+  }
+});
+
+test("travel: built-in playbooks are indexed and pulled in, and a booking needs the approval card", async () => {
+  const { phoenix, done } = setup();
+  try {
+    let profile: string | undefined;
+    let context = "";
+    const approver = new FakeApprover([{ decision: "approve" }]);
+    const model = new ScriptedModel([
+      (m) => ((context = String(m[0]?.content)), callTool("Here's the deal.", "booking_review", {
+        kind: "flight", title: "Hyderabad → Goa, Fri 12 Dec, 6E 2134", site: "MakeMyTrip",
+        itinerary: ["HYD 18:05 → GOI 19:20, nonstop"], travellers: ["Nitesh Varma Rudraraju"],
+        price: { base: 4200, taxes: 650, fees: 199, total: 5049 }, cancellation: "₹3,500 fee before 2 h of departure", payment: "You pay on MakeMyTrip",
+      })),
+      () => say("Approved; filling it in now."),
+    ]);
+    await phoenix.ask("book me a flight to Goa on Friday evening", {
+      model: { name: "x", next: (req) => ((profile ??= req.profile), model.next(req)) },
+      approver,
+    });
+    assert.match(profile!, /- Book a flight: Find, compare and book a flight/);
+    assert.match(context, /booking_review/);
+    assert.equal(approver.seen[0]!.tool, "booking_review");
+    assert.match(approver.seen[0]!.summary, /₹5,049 on MakeMyTrip/);
   } finally {
     done();
   }

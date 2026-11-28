@@ -185,3 +185,44 @@ test("local-only memories are never recalled or searchable by the model", async 
     done();
   }
 });
+
+/** Stand-in embedder: words map to a few "concepts" so meaning can be tested without the model. */
+const CONCEPTS: Record<string, number> = { mother: 0, mom: 0, amma: 0, gym: 1, fitness: 1, lifting: 1, workout: 1, plot: 2, plots: 2, farm: 2, leads: 2 };
+const fakeEmbedder = {
+  name: "fake",
+  calls: 0,
+  async embed(texts: string[]) {
+    this.calls += texts.length;
+    return texts.map((t) => {
+      const v = [0, 0, 0, 0.05];
+      for (const w of t.toLowerCase().match(/[a-z]+/g) ?? []) if (w in CONCEPTS) v[CONCEPTS[w]!] = (v[CONCEPTS[w]!] ?? 0) + 1;
+      const n = Math.hypot(...v);
+      return v.map((x) => x / n);
+    });
+  },
+};
+
+test("meaning search: 'mother' finds Amma's page, 'gym' finds fitness notes; vectors cached and encrypted", async () => {
+  const { cfg, cleanup } = tempConfig();
+  const phoenix = createPhoenix(cfg, { embedder: fakeEmbedder });
+  try {
+    phoenix.memory.add("Calls every Sunday evening", { kind: "person", subject: "Amma" });
+    phoenix.memory.add("Heavy lifting 7 to 8:30 AM; goal: muscle gain", { kind: "fact" });
+    phoenix.memory.add("Prefers window seats on flights", { kind: "fact" });
+    let context = "";
+    const model = new ScriptedModel([(m) => ((context = String(m[0]?.content)), say("ok"))]);
+    await phoenix.ask("remind me to ring my mother and plan food after the workout", { model, approver: new FakeApprover([]) });
+    assert.match(context, /About Amma:[\s\S]*Sunday/, "found by meaning, not by name");
+    assert.match(context, /Heavy lifting/);
+    assert.ok(!context.includes("window seats"));
+
+    const before = fakeEmbedder.calls;
+    await phoenix.ask("anything else for my mother?", { model: new ScriptedModel([() => say("ok")]), approver: new FakeApprover([]) });
+    assert.ok(fakeEmbedder.calls - before <= 3, "stored memories aren't embedded again");
+    const rows = new DatabaseSync(cfg.dbPath).prepare("SELECT vec_enc FROM memory_vectors").all() as Array<{ vec_enc: string }>;
+    assert.ok(rows.length >= 3 && rows.every((r) => !r.vec_enc.startsWith("[")), "vectors are stored encrypted");
+  } finally {
+    phoenix.close();
+    cleanup();
+  }
+});

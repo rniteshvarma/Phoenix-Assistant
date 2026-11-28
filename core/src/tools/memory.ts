@@ -1,11 +1,12 @@
 import { z } from "zod";
-import { rank } from "../memory/recall.ts";
+import { hybridRank, rank } from "../memory/recall.ts";
 import { Tier } from "../policy/tiers.ts";
 import { sensitiveReason } from "../store/memory.ts";
 import { defineTool } from "./types.ts";
 
 export const memoryRemember = defineTool({
   name: "memory_remember",
+  escalateWhenTainted: true,
   tier: Tier.Prepare,
   description:
     "Remember something lasting about the user, so you don't have to ask again. Pick the kind: " +
@@ -49,7 +50,16 @@ export const memorySearch = defineTool({
   async run(i, ctx) {
     // Local-only memories never go to the model.
     const items = ctx.memory.list(i.kind).filter((m) => m.kind !== "local");
-    const found = rank(i.query, items, 12);
+    let found = rank(i.query, items, 12);
+    if (ctx.vectors) {
+      try {
+        const text = (m: (typeof items)[number]) => `${m.subject ? `${m.subject}: ` : ""}${m.text}`.slice(0, 500);
+        const [query, vecs] = await Promise.all([ctx.vectors.query(i.query), ctx.vectors.vectors(items.map(text))]);
+        found = hybridRank(i.query, items, { query, items: new Map(items.map((m, k) => [m.id, vecs[k]!])), pages: new Map() }, 12);
+      } catch {
+        // keywords only
+      }
+    }
     if (found.length === 0) return `Nothing remembered matches "${i.query}".`;
     return found
       .map((m) => `[#${m.id}] ${m.kind}${m.subject ? ` (${m.subject})` : ""}, ${new Date(m.createdAt).toLocaleDateString("en-GB")}: ${m.text}`)
@@ -59,6 +69,7 @@ export const memorySearch = defineTool({
 
 export const memoryForget = defineTool({
   name: "memory_forget",
+  escalateWhenTainted: true,
   tier: Tier.Prepare,
   description: "Forget a remembered item by its number (shown as [#n]).",
   schema: z.strictObject({ id: z.number().int().positive() }),

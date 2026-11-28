@@ -6,6 +6,7 @@ import type { GuardedExecutor } from "../policy/executor.ts";
 import { Tier } from "../policy/tiers.ts";
 import type { TaskStore } from "../store/tasks.ts";
 import type { MemoryStore } from "../store/memory.ts";
+import type { UsageStore } from "../store/usage.ts";
 import type { Tool, ToolRegistry, ToolSession } from "../tools/types.ts";
 import { StreamRevealer, type PrivacyVault } from "../privacy/vault.ts";
 import type { ModelClient } from "./model.ts";
@@ -44,6 +45,8 @@ export interface AgentDeps {
   vault: PrivacyVault;
   /** For learning from the user's feedback on drafts. */
   memory?: MemoryStore;
+  /** Token and cost tracking (counts only). */
+  usage?: UsageStore;
 }
 
 export interface TaskOutcome {
@@ -106,12 +109,16 @@ export async function runTask(
     if (ready) show({ type: "assistant.delta", text: ready });
   };
   let lastText = "";
+  // Taint: once outside content has been read (this task, or earlier in this conversation),
+  // tools that normally run freely but change lasting state ask first.
+  let tainted = JSON.stringify(opts.history ?? []).includes("<untrusted_data");
 
   try {
     for (let step = 0; step < deps.maxSteps; step += 1) {
       if (opts.signal?.aborted) return finish("cancelled", "Stopped by the user.");
 
       const turn = await deps.model.next({ system: SYSTEM_PROMPT, profile: opts.profile, messages, tools, onText, webSearch: opts.webSearch });
+      if (turn.usage) deps.usage?.record(opts.readOnly ? "briefing" : "chat", turn.model ?? deps.model.name, turn.usage);
       const tail = revealer.flush();
       if (tail) show({ type: "assistant.delta", text: tail });
       const texts = turn.content.filter((b) => b.type === "text").map((b) => b.text);
@@ -127,6 +134,7 @@ export async function runTask(
       });
 
       if (turn.refusal) return finish("failed", turn.refusal);
+      if (turn.content.some((b) => b.type === "web_search_tool_result")) tainted = true;
       messages.push({ role: "assistant", content: turn.content });
       for (const text of texts) {
         lastText = text;
@@ -147,7 +155,9 @@ export async function runTask(
             content: "Not allowed here: this is a read-only briefing. Don't change anything." });
           continue;
         }
-        results.push(await handleToolUse(deps, taskId, use, emit, opts.signal));
+        const r = await handleToolUse(deps, taskId, use, emit, opts.signal, tainted);
+        results.push(r);
+        if (!r.is_error && deps.registry.get(use.name)?.untrustedOutput) tainted = true;
       }
       messages.push({ role: "user", content: results });
       deps.tasks.saveTranscript(taskId, messages);
@@ -197,6 +207,7 @@ async function handleToolUse(
   use: ToolUse,
   emit: (e: AgentEvent) => void,
   signal?: AbortSignal,
+  tainted = false,
 ): Promise<Anthropic.Beta.BetaToolResultBlockParam> {
   const vault = deps.vault;
   const result = (content: string, isError = false): Anthropic.Beta.BetaToolResultBlockParam => ({
@@ -213,6 +224,7 @@ async function handleToolUse(
   // Long tools (screen control) can ask the user part-way through, through the same approval path.
   const session: ToolSession = {
     signal,
+    recordUsage: (route, model, u) => deps.usage?.record(route, model, u),
     screenModel: deps.model.screen ? () => deps.model.screen!() : undefined,
     confirm: async (summary, kinds = []) => {
       const step = deps.authority.propose({
@@ -257,7 +269,8 @@ async function handleToolUse(
   const protectedKinds = tool.leavesDevice ? vault.kindsIn(input) : [];
   const confirmTwice = protectedKinds.length > 0;
 
-  if (decision.kind === "allow" && !confirmTwice) {
+  const escalated = decision.kind === "allow" && tainted && tool.escalateWhenTainted;
+  if (decision.kind === "allow" && !confirmTwice && !escalated) {
     emit({ type: "tool.running", tool: use.name, tier: tool.tier, summary });
     return toResult(await deps.executor.execute(call, undefined, session));
   }
@@ -269,7 +282,7 @@ async function handleToolUse(
     tool: use.name,
     tier: tool.tier,
     input,
-    summary,
+    summary: escalated ? `${summary} (suggested after reading outside content)` : summary,
     display: parsed.value,
     protectedKinds,
   });

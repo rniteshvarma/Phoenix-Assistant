@@ -12,8 +12,11 @@ import { GuardedExecutor } from "./policy/executor.ts";
 import { loadKeys } from "./security/keys.ts";
 import { openDatabase } from "./store/db.ts";
 import { MemoryStore } from "./store/memory.ts";
-import { matchSkill, recall, renderProfile, renderRecall, renderSkillIndex } from "./memory/recall.ts";
+import { matchSkill, recallSmart, renderProfile, renderRecall, renderSkillIndex } from "./memory/recall.ts";
+import { LocalEmbedder, MemoryVectors, modelInstalled, type Embedder } from "./memory/embed.ts";
 import { SkillStore } from "./store/skills.ts";
+import { UsageStore } from "./store/usage.ts";
+import { BUILTIN_SKILLS } from "./skills/builtin.ts";
 import { disabledTools } from "./admin/connectors.ts";
 import { SessionStore } from "./store/sessions.ts";
 import { TaskStore } from "./store/tasks.ts";
@@ -39,7 +42,7 @@ export interface AskResult extends TaskOutcome {
 }
 
 /** Composition root: wires storage, security, policy, memory, devices and the agent together. */
-export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {}) {
+export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[]; embedder?: Embedder | null } = {}) {
   ensureDirs(cfg);
   const keys = loadKeys(cfg);
   const db = openDatabase(cfg.dbPath);
@@ -52,6 +55,10 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
   const vault = new PrivacyVault(db, keys.dataKey, keys.privacyKey);
   const registry = new ToolRegistry(opts.tools ?? BUILTIN_TOOLS);
   const skills = new SkillStore(db, keys.dataKey);
+  const usage = new UsageStore(db);
+  // Meaning search: on when the on-device model is installed (or a test supplies an embedder).
+  const embedder = opts.embedder !== undefined ? opts.embedder : modelInstalled(cfg.home) ? new LocalEmbedder(cfg.home) : null;
+  const vectors = embedder ? new MemoryVectors(db, keys.dataKey, embedder) : undefined;
   // Connectors switched off in the Control Center: their tools are hidden and blocked.
   const policy = new PolicyEngine(registry, (tool) => disabledTools(settings).has(tool));
   const authority = new ApprovalAuthority(keys.hmacKey, { ttlMs: cfg.approvalTtlMs });
@@ -61,7 +68,7 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
     authority,
     audit,
     cfg,
-    services: { memory, devices, vault, settings, skills },
+    services: { memory, devices, vault, settings, skills, vectors },
     vault,
   });
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -75,6 +82,8 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
     devices,
     settings,
     skills,
+    vectors,
+    usage,
     vault,
     registry,
     policy,
@@ -86,10 +95,12 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
       const session = sessions.resumeOrCreate(o.sessionId);
       // Privacy Shield: sensitive values become placeholders before anything reaches the model.
       // Memory: the profile (cached) plus only what's relevant to this request, picked on this Mac.
-      const recalled = recall(memory, request);
+      const recalled = await recallSmart(memory, request, vectors);
       // The stable part (cached): the assistant's name, who the user is, and the skill index.
       const name = settings.get<string>("assistant.name", "Phoenix");
-      const enabledSkills = skills.list().filter((s) => s.enabled);
+      // The user's own skills, plus Phoenix's built-in playbooks (a user skill with the same name wins).
+      const own = skills.list().filter((s) => s.enabled);
+      const enabledSkills = [...own, ...BUILTIN_SKILLS.filter((b) => !own.some((s) => s.name.toLowerCase() === b.name.toLowerCase()))];
       const profile =
         vault.protect(
           [
@@ -111,7 +122,7 @@ export function createPhoenix(cfg: PhoenixConfig, opts: { tools?: Tool[] } = {})
       const safeRequest = vault.protect(request).text;
       const safeContext = vault.protect(context).text;
       const outcome = await runTask(
-        { model: o.model, approver: o.approver, registry, policy, authority, executor, audit, tasks, vault, memory, maxSteps: cfg.maxSteps },
+        { model: o.model, approver: o.approver, registry, policy, authority, executor, audit, tasks, vault, memory, usage, maxSteps: cfg.maxSteps },
         safeRequest,
         { onEvent: o.onEvent, signal: o.signal, history: session.messages, context: safeContext, readOnly: o.readOnly, profile,
           webSearch: !disabledTools(settings).has("web_search") },

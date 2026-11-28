@@ -12,6 +12,7 @@ import { CONNECTORS, disabledConnectors, setConnector } from "./connectors.ts";
 import { backupSettings, createBackup, setupBackupKey, updateBackupSettings } from "../backup/backup.ts";
 import { loadMasterKey } from "../security/keys.ts";
 import { MCP_PRESETS, type McpHub } from "../mcp/hub.ts";
+import { cacheHitRate } from "../store/usage.ts";
 
 /**
  * The Control Center's view of Phoenix: settings, memory, skills, connectors, keys and history.
@@ -50,6 +51,7 @@ export const AdminOp = z.discriminatedUnion("op", [
   z.object({ op: z.literal("history.get"), id: z.string().max(64) }),
   z.object({ op: z.literal("history.remove"), id: z.string().max(64) }),
   z.object({ op: z.literal("backup.status") }),
+  z.object({ op: z.literal("usage") }),
   z.object({ op: z.literal("backup.setup"), passphrase: z.string().min(1).max(500) }),
   z.object({ op: z.literal("backup.now") }),
   z.object({ op: z.literal("backup.settings"), dir: z.string().min(1).max(500).optional(), nightly: z.boolean().optional() }),
@@ -179,6 +181,12 @@ export async function handleAdmin(phoenix: Phoenix, raw: unknown, hooks: AdminHo
 
     case "backup.status":
       return backupView(phoenix);
+    case "usage": {
+      const rows = phoenix.usage.recent(30);
+      const since = (days: number) => rows.filter((r) => Date.parse(r.day) >= Date.now() - days * 86_400_000);
+      const sum = (rs: typeof rows) => ({ cost: rs.reduce((s, r) => s + r.cost, 0), calls: rs.reduce((s, r) => s + r.calls, 0), cacheRate: cacheHitRate(rs) });
+      return { today: sum(since(1)), week: sum(since(7)), month: sum(rows), byRoute: Object.fromEntries(["chat", "briefing", "screen"].map((route) => [route, sum(rows.filter((r) => r.route === route))])) };
+    }
     case "backup.setup":
       setupBackupKey(settings, req.passphrase);
       createBackup(phoenix.cfg, settings, loadMasterKey(phoenix.cfg));

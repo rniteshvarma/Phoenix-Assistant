@@ -7,6 +7,8 @@ import type { MemoryStore } from "../store/memory.ts";
 import type { PrivacyVault } from "../privacy/vault.ts";
 import type { SettingsStore } from "../proactive/schedule.ts";
 import type { SkillStore } from "../store/skills.ts";
+import type { MemoryVectors } from "../memory/embed.ts";
+import type { Usage } from "../store/usage.ts";
 import type { ScreenModel } from "../screen/session.ts";
 
 /** Shared services tools may use. */
@@ -16,6 +18,8 @@ export interface ToolServices {
   vault: PrivacyVault;
   settings: SettingsStore;
   skills: SkillStore;
+  /** Meaning search over memories (on-device), when the model is installed. */
+  vectors?: MemoryVectors;
 }
 
 /** Per-run hooks for long tools that need the user part-way through (screen control). */
@@ -25,6 +29,8 @@ export interface ToolSession {
   signal?: AbortSignal;
   /** A model able to drive the screen, if this run has one (not offline/scripted runs). */
   screenModel?: () => ScreenModel;
+  /** Count tokens used by models a tool runs itself (screen control). */
+  recordUsage?: (route: string, model: string, usage: Usage) => void;
 }
 
 export interface ToolContext extends ToolServices {
@@ -46,6 +52,12 @@ export interface ToolSpec<S extends z.ZodType> {
   /** True when running it sends its input off this Mac (email, forms, bookings…). Protected
    *  values in such an input need the user's approval twice. */
   leavesDevice?: boolean;
+  /**
+   * Normally runs without asking, but after Phoenix has read outside content in this task (an email,
+   * web page, document, connector result) it asks first: hidden instructions in that content must not
+   * be able to plant memories, calendar events, links or file moves on their own.
+   */
+  escalateWhenTainted?: boolean;
   /** For tools that send the user's words: once approved and run, keep them as a writing sample. */
   styleSample?: (input: z.infer<S>) => { subject: string; text: string } | null;
   run: (input: z.infer<S>, ctx: ToolContext) => Promise<string>;
@@ -59,6 +71,7 @@ export interface Tool {
   untrustedOutput: boolean;
   leavesDevice: boolean;
   styleSample?: (input: unknown) => { subject: string; text: string } | null;
+  escalateWhenTainted: boolean;
   parse: (input: unknown) => { ok: true; value: unknown } | { ok: false; error: string };
   describe: (input: unknown) => string;
   run: (input: unknown, ctx: ToolContext) => Promise<string>;
@@ -81,6 +94,7 @@ export function defineTool<S extends z.ZodType>(spec: ToolSpec<S>): Tool {
     tier: spec.tier,
     untrustedOutput: spec.untrustedOutput ?? false,
     leavesDevice: spec.leavesDevice ?? false,
+    escalateWhenTainted: spec.escalateWhenTainted ?? false,
     styleSample: spec.styleSample ? (input) => spec.styleSample!(spec.schema.parse(input)) : undefined,
     parse,
     describe: (input) => spec.describe(spec.schema.parse(input)),
